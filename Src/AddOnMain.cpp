@@ -60,6 +60,10 @@ int			g_langueMessages = 1;
 // (RFIX/Tapir_TranslatorMenus.grc, by Tools/GenererMenus.cpp) once per interface language:
 // menu ID = BaseMenus (language) + 0..4, and its status-bar help strings are at + DecalageAides.
 // These are functions (not constants) because g_langueMenus is only known in RegisterInterface.
+// First menu registration error (reported by Initialize, since RegisterInterface must not fail).
+GSErrCode g_erreurMenus = NoError;
+short	  g_menuEnErreur = 0;
+
 short kMenuEntree	  () { return TT::BaseMenus (g_langueMenus) + 0; }	// input language: item i = TT::Langues[i - 1] (1 = automatic detection)
 short kMenuSortie	  () { return TT::BaseMenus (g_langueMenus) + 1; }	// output language: item i = TT::Langues[i - 1] (1 = no translation)
 short kMenuCommandes  () { return TT::BaseMenus (g_langueMenus) + 2; }	// "Options" menu (items listed below)
@@ -789,14 +793,21 @@ GSErrCode RegisterInterface (void)
 	// Step 2: register the five menus of that language (help strings at + DecalageAides). They all
 	// carry the same title "Tapir Translator", so ArchiCAD merges them into one main menu
 	// (MenuFlag_InsertIntoSame); a separator is put before the Options menu.
-	GSErrCode err = NoError;
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuEntree (), kMenuEntree () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuSortie (), kMenuSortie () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuTraducteur (), kMenuTraducteur () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuCommandes (), kMenuCommandes () + TT::DecalageAides, MenuCode_UserDef,
-										MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuInterface (), kMenuInterface () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	return err;
+	const auto Enregistrer = [] (short menu, GSFlags drapeaux) {
+		const GSErrCode e = ACAPI_MenuItem_RegisterMenu (menu, static_cast<short> (menu + TT::DecalageAides), MenuCode_UserDef, drapeaux);
+		if (e != NoError && g_erreurMenus == NoError) {
+			g_erreurMenus = e;
+			g_menuEnErreur = menu;
+		}
+	};
+	Enregistrer (kMenuEntree (), MenuFlag_InsertIntoSame);
+	Enregistrer (kMenuSortie (), MenuFlag_InsertIntoSame);
+	Enregistrer (kMenuTraducteur (), MenuFlag_InsertIntoSame);
+	Enregistrer (kMenuCommandes (), MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
+	Enregistrer (kMenuInterface (), MenuFlag_InsertIntoSame);
+	// Step 3: never return the error: a failing menu must not make ArchiCAD unload the add-on
+	// (the translation itself would then stop too). The error is reported by Initialize.
+	return NoError;
 }
 
 
@@ -815,12 +826,18 @@ GSErrCode Initialize (void)
 	}
 	// Step 2: layer, environment, settings and (optionally) the engine.
 	Demarrer ();
+	if (g_erreurMenus != NoError)
+		Rapport (GS::UniString ("ERROR ACAPI_MenuItem_RegisterMenu (") + GS::ValueToUniString (static_cast<Int32> (g_menuEnErreur)) +
+				 ") = " + GS::ValueToUniString (static_cast<Int32> (g_erreurMenus)));
 	// Step 3: menu check marks reflect the loaded settings.
 	RafraichirCoches ();
 	// Step 4: stay loaded: the environment, the engine process and its watchdog thread belong
 	// to this module and must live for the whole session.
 	ACAPI_KeepInMemory (true);
-	return err;
+	// Step 5: menu errors were reported above; they must not unload the add-on (translation keeps
+	// working with the saved settings).
+	(void) err;
+	return NoError;
 }
 
 

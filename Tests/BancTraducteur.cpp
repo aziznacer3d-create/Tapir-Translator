@@ -1479,6 +1479,19 @@ int main ()
 			}
 		}
 		Verifier ("menus generes pour les 20 langues (5 menus + aides chacune)", tous);
+
+		// Step 6: every resource ID read by the ArchiCAD API (a short) must stay below 32767; above,
+		// it wraps to a negative number and ArchiCAD unloads the add-on (bug of v0.7.0).
+		bool dansShort = true;
+		for (int l = 0; l < TT::NombreLanguesInterface; ++l) {
+			for (int m = 0; m < 5; ++m)
+				dansShort = dansShort && TT::BaseMenus (l) + m + TT::DecalageAides <= 32767 && TT::BaseMenus (l) + m > 32000;
+		}
+		Verifier ("identifiants de menus et d'aides entre 32001 et 32767 (short de l'API ArchiCAD)", dansShort);
+		bool sansIdTropGrand = true;
+		for (size_t p = grc.find ("'STR#' "); p != std::string::npos; p = grc.find ("'STR#' ", p + 7))
+			sansIdTropGrand = sansIdTropGrand && std::atoi (grc.c_str () + p + 7) <= 32767;
+		Verifier ("aucune ressource generee au-dessus de 32767", sansIdTropGrand);
 		Verifier ("menus generes : japonais present", grc.find (TT::Txt (TT::M_TRADUCTEUR, TT::IndiceInterface ("ja"))) != std::string::npos);
 	}
 

@@ -64,10 +64,17 @@ const char* CodeInterface (int i);
 const char* NomInterface (int i);
 
 // Menu resource IDs: base of the 5 menus of interface language i (+0 input language, +1 output
-// language, +2 options, +3 online translator, +4 tool language); help strings are at +1000.
-// E.g. French menus are 32500..32504, English menus 32510..32514.
-constexpr short BaseMenus (int i) { return static_cast<short> (32500 + 10 * i); }
-constexpr short DecalageAides = 1000;
+// language, +2 options, +3 online translator, +4 tool language); help strings are at +300.
+// E.g. French menus are 32100..32104 (help 32400..32404), English menus 32110..32114.
+// The ArchiCAD API takes resource IDs as 16-bit signed integers (short): every ID must stay
+// below 32767, otherwise it wraps to a negative number, menu registration fails and ArchiCAD
+// unloads the whole add-on (bug of v0.7.0, whose help strings were at 33500..33694).
+constexpr short BaseMenus (int i) { return static_cast<short> (32100 + 10 * i); }
+constexpr short DecalageAides = 300;
+static_assert (32100 + 10 * (NombreLanguesInterface - 1) + 4 + DecalageAides <= 32767,
+			   "menu help resource IDs must fit in a short (ArchiCAD API)");
+static_assert (32100 + 10 * (NombreLanguesInterface - 1) + 4 < 32100 + DecalageAides,
+			   "menu IDs and help IDs must not overlap");
 
 // ArchiCAD version code (FRA, GER, INT, JPN...) -> language code (fr, de, en, ja...);
 // unknown codes give "en".

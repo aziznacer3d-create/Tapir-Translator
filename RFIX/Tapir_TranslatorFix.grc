@@ -12,7 +12,8 @@
 //   The menus (20 languages) are in Tapir_TranslatorMenus.grc, generated at build
 //   time by Tools/GenererMenus.cpp from Src/TT_Textes.cpp:
 //     BaseMenus (language) + 0 input language, + 1 output language, + 2 Options,
-//     + 3 online translator, + 4 tool language; help strings at + 1000.
+//     + 3 online translator, + 4 tool language; help strings at + 300
+//     (resource IDs must stay below 32767: see TT_Textes.hpp).
 // ****************************************************************************/
 
 

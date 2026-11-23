@@ -2,7 +2,7 @@
 
 /* ===== fr ===== */
 
-'STR#' 32500 "Langue d'entree" {
+'STR#' 32100 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Langue d'entrée"
 /* [1] */			"Détection automatique"
@@ -28,7 +28,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33500 "Langue d'entree (aides)" {
+'STR#' 32400 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconnaît tout seul la langue des textes du script."
@@ -54,7 +54,7 @@
 /* [21] */		"Langue dans laquelle les scripts sont écrits."
 }
 
-'STR#' 32501 "Langue de sortie" {
+'STR#' 32101 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Langue de sortie"
 /* [1] */			"Aucune traduction"
@@ -80,7 +80,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33501 "Langue de sortie (aides)" {
+'STR#' 32401 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Affiche les scripts tels qu'ils sont écrits."
@@ -106,7 +106,7 @@
 /* [21] */		"Langue affichée dans les scripts, en direct (fenêtres ouvertes comprises)."
 }
 
-'STR#' 32502 "Options" {
+'STR#' 32102 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Options"
 /* [1] */			"Traduction en ligne (textes hors dictionnaire)"
@@ -116,7 +116,7 @@
 /* [5] */			"État de Tapir Translator (Rapport de session)"
 }
 
-'STR#' 33502 "Options (aides)" {
+'STR#' 32402 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Les textes absents des dictionnaires sont traduits en ligne puis gardés en cache sur ce poste."
@@ -126,7 +126,7 @@
 /* [5] */		"Écrit l'état complet de Tapir Translator dans le Rapport de session."
 }
 
-'STR#' 32503 "Traducteur en ligne" {
+'STR#' 32103 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Traducteur en ligne"
 /* [1] */			"DeepL"
@@ -139,7 +139,7 @@
 /* [8] */			"Corrections des termes..."
 }
 
-'STR#' 33503 "Traducteur en ligne (aides)" {
+'STR#' 32403 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Traducteur des textes absents des dictionnaires (clé à saisir dans Clés des traducteurs)."
@@ -152,7 +152,7 @@
 /* [8] */		"Ouvre corrections.json : termes à corriger dans les traductions en ligne, appliqués aussitôt."
 }
 
-'STR#' 32504 "Langue de l'outil" {
+'STR#' 32104 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Langue de Tapir Translator"
 /* [1] */			"Comme ArchiCAD"
@@ -178,7 +178,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33504 "Langue de l'outil (aides)" {
+'STR#' 32404 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Langue des menus et messages de Tapir Translator (menus : au prochain démarrage d'ArchiCAD)."
@@ -206,7 +206,7 @@
 
 /* ===== en ===== */
 
-'STR#' 32510 "Langue d'entree" {
+'STR#' 32110 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Input language"
 /* [1] */			"Automatic detection"
@@ -232,7 +232,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33510 "Langue d'entree (aides)" {
+'STR#' 32410 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Recognizes the language of the script texts automatically."
@@ -258,7 +258,7 @@
 /* [21] */		"Language the scripts are written in."
 }
 
-'STR#' 32511 "Langue de sortie" {
+'STR#' 32111 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Output language"
 /* [1] */			"No translation"
@@ -284,7 +284,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33511 "Langue de sortie (aides)" {
+'STR#' 32411 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Shows the scripts as they are written."
@@ -310,7 +310,7 @@
 /* [21] */		"Language displayed in the scripts, live (open windows included)."
 }
 
-'STR#' 32512 "Options" {
+'STR#' 32112 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Options"
 /* [1] */			"Online translation (texts not in dictionaries)"
@@ -320,7 +320,7 @@
 /* [5] */			"Tapir Translator status (Session Report)"
 }
 
-'STR#' 33512 "Options (aides)" {
+'STR#' 32412 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Texts not in the dictionaries are translated online, then cached on this computer."
@@ -330,7 +330,7 @@
 /* [5] */		"Writes the full Tapir Translator status to the Session Report."
 }
 
-'STR#' 32513 "Traducteur en ligne" {
+'STR#' 32113 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Online translator"
 /* [1] */			"DeepL"
@@ -343,7 +343,7 @@
 /* [8] */			"Term corrections..."
 }
 
-'STR#' 33513 "Traducteur en ligne (aides)" {
+'STR#' 32413 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Translator for texts not in the dictionaries (enter its key in Translator keys)."
@@ -356,7 +356,7 @@
 /* [8] */		"Opens corrections.json: terms to fix in online translations, applied immediately."
 }
 
-'STR#' 32514 "Langue de l'outil" {
+'STR#' 32114 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator language"
 /* [1] */			"Same as ArchiCAD"
@@ -382,7 +382,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33514 "Langue de l'outil (aides)" {
+'STR#' 32414 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Language of the Tapir Translator menus and messages (menus: at the next ArchiCAD start)."
@@ -410,7 +410,7 @@
 
 /* ===== de ===== */
 
-'STR#' 32520 "Langue d'entree" {
+'STR#' 32120 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Eingabesprache"
 /* [1] */			"Automatische Erkennung"
@@ -436,7 +436,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33520 "Langue d'entree (aides)" {
+'STR#' 32420 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Erkennt die Sprache der Skripttexte automatisch."
@@ -462,7 +462,7 @@
 /* [21] */		"Sprache, in der die Skripte geschrieben sind."
 }
 
-'STR#' 32521 "Langue de sortie" {
+'STR#' 32121 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Ausgabesprache"
 /* [1] */			"Keine Übersetzung"
@@ -488,7 +488,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33521 "Langue de sortie (aides)" {
+'STR#' 32421 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Zeigt die Skripte so, wie sie geschrieben sind."
@@ -514,7 +514,7 @@
 /* [21] */		"In den Skripten angezeigte Sprache, sofort (auch geöffnete Fenster)."
 }
 
-'STR#' 32522 "Options" {
+'STR#' 32122 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Optionen"
 /* [1] */			"Online-Übersetzung (Texte außerhalb der Wörterbücher)"
@@ -524,7 +524,7 @@
 /* [5] */			"Status von Tapir Translator (Sitzungsbericht)"
 }
 
-'STR#' 33522 "Options (aides)" {
+'STR#' 32422 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Texte außerhalb der Wörterbücher werden online übersetzt und auf diesem Rechner zwischengespeichert."
@@ -534,7 +534,7 @@
 /* [5] */		"Schreibt den vollständigen Status in den Sitzungsbericht."
 }
 
-'STR#' 32523 "Traducteur en ligne" {
+'STR#' 32123 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Online-Übersetzer"
 /* [1] */			"DeepL"
@@ -547,7 +547,7 @@
 /* [8] */			"Begriffskorrekturen..."
 }
 
-'STR#' 33523 "Traducteur en ligne (aides)" {
+'STR#' 32423 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Übersetzer für Texte außerhalb der Wörterbücher (Schlüssel unter Übersetzer-Schlüssel eingeben)."
@@ -560,7 +560,7 @@
 /* [8] */		"Öffnet corrections.json: in Online-Übersetzungen zu korrigierende Begriffe, sofort angewendet."
 }
 
-'STR#' 32524 "Langue de l'outil" {
+'STR#' 32124 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Sprache von Tapir Translator"
 /* [1] */			"Wie ArchiCAD"
@@ -586,7 +586,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33524 "Langue de l'outil (aides)" {
+'STR#' 32424 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Sprache der Menüs und Meldungen (Menüs: beim nächsten Start von ArchiCAD)."
@@ -614,7 +614,7 @@
 
 /* ===== es ===== */
 
-'STR#' 32530 "Langue d'entree" {
+'STR#' 32130 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de entrada"
 /* [1] */			"Detección automática"
@@ -640,7 +640,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33530 "Langue d'entree (aides)" {
+'STR#' 32430 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconoce automáticamente el idioma de los textos del script."
@@ -666,7 +666,7 @@
 /* [21] */		"Idioma en que están escritos los scripts."
 }
 
-'STR#' 32531 "Langue de sortie" {
+'STR#' 32131 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de salida"
 /* [1] */			"Sin traducción"
@@ -692,7 +692,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33531 "Langue de sortie (aides)" {
+'STR#' 32431 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Muestra los scripts tal como están escritos."
@@ -718,7 +718,7 @@
 /* [21] */		"Idioma mostrado en los scripts, al instante (ventanas abiertas incluidas)."
 }
 
-'STR#' 32532 "Options" {
+'STR#' 32132 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Opciones"
 /* [1] */			"Traducción en línea (textos fuera de los diccionarios)"
@@ -728,7 +728,7 @@
 /* [5] */			"Estado de Tapir Translator (Informe de sesión)"
 }
 
-'STR#' 33532 "Options (aides)" {
+'STR#' 32432 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Los textos fuera de los diccionarios se traducen en línea y se guardan en caché en este equipo."
@@ -738,7 +738,7 @@
 /* [5] */		"Escribe el estado completo en el Informe de sesión."
 }
 
-'STR#' 32533 "Traducteur en ligne" {
+'STR#' 32133 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Traductor en línea"
 /* [1] */			"DeepL"
@@ -751,7 +751,7 @@
 /* [8] */			"Corrección de términos..."
 }
 
-'STR#' 33533 "Traducteur en ligne (aides)" {
+'STR#' 32433 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Traductor para los textos fuera de los diccionarios (clave en Claves de los traductores)."
@@ -764,7 +764,7 @@
 /* [8] */		"Abre corrections.json: términos que corregir en las traducciones en línea, aplicados al instante."
 }
 
-'STR#' 32534 "Langue de l'outil" {
+'STR#' 32134 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de Tapir Translator"
 /* [1] */			"Igual que ArchiCAD"
@@ -790,7 +790,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33534 "Langue de l'outil (aides)" {
+'STR#' 32434 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Idioma de los menús y mensajes (menús: al próximo inicio de ArchiCAD)."
@@ -818,7 +818,7 @@
 
 /* ===== pt ===== */
 
-'STR#' 32540 "Langue d'entree" {
+'STR#' 32140 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de entrada"
 /* [1] */			"Deteção automática"
@@ -844,7 +844,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33540 "Langue d'entree (aides)" {
+'STR#' 32440 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconhece automaticamente o idioma dos textos do script."
@@ -870,7 +870,7 @@
 /* [21] */		"Idioma em que os scripts estão escritos."
 }
 
-'STR#' 32541 "Langue de sortie" {
+'STR#' 32141 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de saída"
 /* [1] */			"Sem tradução"
@@ -896,7 +896,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33541 "Langue de sortie (aides)" {
+'STR#' 32441 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Mostra os scripts tal como estão escritos."
@@ -922,7 +922,7 @@
 /* [21] */		"Idioma apresentado nos scripts, em direto (janelas abertas incluídas)."
 }
 
-'STR#' 32542 "Options" {
+'STR#' 32142 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Opções"
 /* [1] */			"Tradução online (textos fora dos dicionários)"
@@ -932,7 +932,7 @@
 /* [5] */			"Estado do Tapir Translator (Relatório da sessão)"
 }
 
-'STR#' 33542 "Options (aides)" {
+'STR#' 32442 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Os textos fora dos dicionários são traduzidos online e guardados em cache neste computador."
@@ -942,7 +942,7 @@
 /* [5] */		"Escreve o estado completo no Relatório da sessão."
 }
 
-'STR#' 32543 "Traducteur en ligne" {
+'STR#' 32143 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tradutor online"
 /* [1] */			"DeepL"
@@ -955,7 +955,7 @@
 /* [8] */			"Correção de termos..."
 }
 
-'STR#' 33543 "Traducteur en ligne (aides)" {
+'STR#' 32443 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Tradutor dos textos fora dos dicionários (chave em Chaves dos tradutores)."
@@ -968,7 +968,7 @@
 /* [8] */		"Abre corrections.json: termos a corrigir nas traduções online, aplicados de imediato."
 }
 
-'STR#' 32544 "Langue de l'outil" {
+'STR#' 32144 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma do Tapir Translator"
 /* [1] */			"Igual ao ArchiCAD"
@@ -994,7 +994,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33544 "Langue de l'outil (aides)" {
+'STR#' 32444 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Idioma dos menus e mensagens (menus: no próximo arranque do ArchiCAD)."
@@ -1022,7 +1022,7 @@
 
 /* ===== it ===== */
 
-'STR#' 32550 "Langue d'entree" {
+'STR#' 32150 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lingua di origine"
 /* [1] */			"Rilevamento automatico"
@@ -1048,7 +1048,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33550 "Langue d'entree (aides)" {
+'STR#' 32450 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Riconosce automaticamente la lingua dei testi dello script."
@@ -1074,7 +1074,7 @@
 /* [21] */		"Lingua in cui sono scritti gli script."
 }
 
-'STR#' 32551 "Langue de sortie" {
+'STR#' 32151 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lingua di destinazione"
 /* [1] */			"Nessuna traduzione"
@@ -1100,7 +1100,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33551 "Langue de sortie (aides)" {
+'STR#' 32451 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Mostra gli script così come sono scritti."
@@ -1126,7 +1126,7 @@
 /* [21] */		"Lingua mostrata negli script, in tempo reale (finestre aperte comprese)."
 }
 
-'STR#' 32552 "Options" {
+'STR#' 32152 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Opzioni"
 /* [1] */			"Traduzione online (testi non nei dizionari)"
@@ -1136,7 +1136,7 @@
 /* [5] */			"Stato di Tapir Translator (Rapporto di sessione)"
 }
 
-'STR#' 33552 "Options (aides)" {
+'STR#' 32452 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"I testi non presenti nei dizionari sono tradotti online e conservati nella cache di questo computer."
@@ -1146,7 +1146,7 @@
 /* [5] */		"Scrive lo stato completo nel Rapporto di sessione."
 }
 
-'STR#' 32553 "Traducteur en ligne" {
+'STR#' 32153 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Traduttore online"
 /* [1] */			"DeepL"
@@ -1159,7 +1159,7 @@
 /* [8] */			"Correzione dei termini..."
 }
 
-'STR#' 33553 "Traducteur en ligne (aides)" {
+'STR#' 32453 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Traduttore per i testi non presenti nei dizionari (chiave in Chiavi dei traduttori)."
@@ -1172,7 +1172,7 @@
 /* [8] */		"Apre corrections.json: termini da correggere nelle traduzioni online, applicati subito."
 }
 
-'STR#' 32554 "Langue de l'outil" {
+'STR#' 32154 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lingua di Tapir Translator"
 /* [1] */			"Come ArchiCAD"
@@ -1198,7 +1198,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33554 "Langue de l'outil (aides)" {
+'STR#' 32454 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Lingua di menu e messaggi (menu: al prossimo avvio di ArchiCAD)."
@@ -1226,7 +1226,7 @@
 
 /* ===== hu ===== */
 
-'STR#' 32560 "Langue d'entree" {
+'STR#' 32160 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Bemeneti nyelv"
 /* [1] */			"Automatikus felismerés"
@@ -1252,7 +1252,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33560 "Langue d'entree (aides)" {
+'STR#' 32460 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automatikusan felismeri a szkript szövegeinek nyelvét."
@@ -1278,7 +1278,7 @@
 /* [21] */		"A szkriptek nyelve."
 }
 
-'STR#' 32561 "Langue de sortie" {
+'STR#' 32161 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Kimeneti nyelv"
 /* [1] */			"Nincs fordítás"
@@ -1304,7 +1304,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33561 "Langue de sortie (aides)" {
+'STR#' 32461 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"A szkripteket eredeti formájukban mutatja."
@@ -1330,7 +1330,7 @@
 /* [21] */		"A szkriptekben megjelenő nyelv, azonnal (a nyitott ablakokban is)."
 }
 
-'STR#' 32562 "Options" {
+'STR#' 32162 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Beállítások"
 /* [1] */			"Online fordítás (szótáron kívüli szövegek)"
@@ -1340,7 +1340,7 @@
 /* [5] */			"Tapir Translator állapota (munkamenet-jelentés)"
 }
 
-'STR#' 33562 "Options (aides)" {
+'STR#' 32462 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"A szótárakban nem szereplő szövegek online fordítása, majd tárolása ezen a gépen."
@@ -1350,7 +1350,7 @@
 /* [5] */		"A teljes állapotot a munkamenet-jelentésbe írja."
 }
 
-'STR#' 32563 "Traducteur en ligne" {
+'STR#' 32163 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Online fordító"
 /* [1] */			"DeepL"
@@ -1363,7 +1363,7 @@
 /* [8] */			"Kifejezések javítása..."
 }
 
-'STR#' 33563 "Traducteur en ligne (aides)" {
+'STR#' 32463 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Fordító a szótárakban nem szereplő szövegekhez (kulcs: Fordítói kulcsok)."
@@ -1376,7 +1376,7 @@
 /* [8] */		"Megnyitja a corrections.json fájlt: az online fordításokban javítandó kifejezések, azonnal érvényesek."
 }
 
-'STR#' 32564 "Langue de l'outil" {
+'STR#' 32164 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator nyelve"
 /* [1] */			"Mint az ArchiCAD"
@@ -1402,7 +1402,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33564 "Langue de l'outil (aides)" {
+'STR#' 32464 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"A menük és üzenetek nyelve (menük: az ArchiCAD következő indításakor)."
@@ -1430,7 +1430,7 @@
 
 /* ===== cs ===== */
 
-'STR#' 32570 "Langue d'entree" {
+'STR#' 32170 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Vstupní jazyk"
 /* [1] */			"Automatická detekce"
@@ -1456,7 +1456,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33570 "Langue d'entree (aides)" {
+'STR#' 32470 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automaticky rozpozná jazyk textů skriptu."
@@ -1482,7 +1482,7 @@
 /* [21] */		"Jazyk, ve kterém jsou skripty napsány."
 }
 
-'STR#' 32571 "Langue de sortie" {
+'STR#' 32171 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Výstupní jazyk"
 /* [1] */			"Bez překladu"
@@ -1508,7 +1508,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33571 "Langue de sortie (aides)" {
+'STR#' 32471 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Zobrazí skripty tak, jak jsou napsány."
@@ -1534,7 +1534,7 @@
 /* [21] */		"Jazyk zobrazený ve skriptech, okamžitě (včetně otevřených oken)."
 }
 
-'STR#' 32572 "Options" {
+'STR#' 32172 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Možnosti"
 /* [1] */			"Online překlad (texty mimo slovníky)"
@@ -1544,7 +1544,7 @@
 /* [5] */			"Stav Tapir Translator (Zpráva relace)"
 }
 
-'STR#' 33572 "Options (aides)" {
+'STR#' 32472 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Texty mimo slovníky se přeloží online a uloží do mezipaměti v tomto počítači."
@@ -1554,7 +1554,7 @@
 /* [5] */		"Zapíše úplný stav do Zprávy relace."
 }
 
-'STR#' 32573 "Traducteur en ligne" {
+'STR#' 32173 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Online překladač"
 /* [1] */			"DeepL"
@@ -1567,7 +1567,7 @@
 /* [8] */			"Opravy termínů..."
 }
 
-'STR#' 33573 "Traducteur en ligne (aides)" {
+'STR#' 32473 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Překladač textů mimo slovníky (klíč zadejte v Klíče překladačů)."
@@ -1580,7 +1580,7 @@
 /* [8] */		"Otevře corrections.json: termíny k opravě v online překladech, použijí se okamžitě."
 }
 
-'STR#' 32574 "Langue de l'outil" {
+'STR#' 32174 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Jazyk Tapir Translator"
 /* [1] */			"Stejně jako ArchiCAD"
@@ -1606,7 +1606,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33574 "Langue de l'outil (aides)" {
+'STR#' 32474 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Jazyk nabídek a zpráv (nabídky: při příštím spuštění ArchiCADu)."
@@ -1634,7 +1634,7 @@
 
 /* ===== pl ===== */
 
-'STR#' 32580 "Langue d'entree" {
+'STR#' 32180 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Język wejściowy"
 /* [1] */			"Wykrywanie automatyczne"
@@ -1660,7 +1660,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33580 "Langue d'entree (aides)" {
+'STR#' 32480 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automatycznie rozpoznaje język tekstów skryptu."
@@ -1686,7 +1686,7 @@
 /* [21] */		"Język, w którym napisane są skrypty."
 }
 
-'STR#' 32581 "Langue de sortie" {
+'STR#' 32181 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Język wyjściowy"
 /* [1] */			"Bez tłumaczenia"
@@ -1712,7 +1712,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33581 "Langue de sortie (aides)" {
+'STR#' 32481 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Wyświetla skrypty tak, jak zostały napisane."
@@ -1738,7 +1738,7 @@
 /* [21] */		"Język wyświetlany w skryptach, na bieżąco (także w otwartych oknach)."
 }
 
-'STR#' 32582 "Options" {
+'STR#' 32182 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Opcje"
 /* [1] */			"Tłumaczenie online (teksty spoza słowników)"
@@ -1748,7 +1748,7 @@
 /* [5] */			"Stan Tapir Translator (Raport sesji)"
 }
 
-'STR#' 33582 "Options (aides)" {
+'STR#' 32482 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Teksty spoza słowników są tłumaczone online i zapisywane w pamięci podręcznej tego komputera."
@@ -1758,7 +1758,7 @@
 /* [5] */		"Zapisuje pełny stan w Raporcie sesji."
 }
 
-'STR#' 32583 "Traducteur en ligne" {
+'STR#' 32183 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tłumacz online"
 /* [1] */			"DeepL"
@@ -1771,7 +1771,7 @@
 /* [8] */			"Poprawki terminów..."
 }
 
-'STR#' 33583 "Traducteur en ligne (aides)" {
+'STR#' 32483 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Tłumacz tekstów spoza słowników (klucz w Klucze tłumaczy)."
@@ -1784,7 +1784,7 @@
 /* [8] */		"Otwiera corrections.json: terminy do poprawienia w tłumaczeniach online, stosowane od razu."
 }
 
-'STR#' 32584 "Langue de l'outil" {
+'STR#' 32184 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Język Tapir Translator"
 /* [1] */			"Jak ArchiCAD"
@@ -1810,7 +1810,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33584 "Langue de l'outil (aides)" {
+'STR#' 32484 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Język menu i komunikatów (menu: przy następnym uruchomieniu ArchiCADa)."
@@ -1838,7 +1838,7 @@
 
 /* ===== ru ===== */
 
-'STR#' 32590 "Langue d'entree" {
+'STR#' 32190 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Исходный язык"
 /* [1] */			"Автоопределение"
@@ -1864,7 +1864,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33590 "Langue d'entree (aides)" {
+'STR#' 32490 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Автоматически определяет язык текстов скрипта."
@@ -1890,7 +1890,7 @@
 /* [21] */		"Язык, на котором написаны скрипты."
 }
 
-'STR#' 32591 "Langue de sortie" {
+'STR#' 32191 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Язык перевода"
 /* [1] */			"Без перевода"
@@ -1916,7 +1916,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33591 "Langue de sortie (aides)" {
+'STR#' 32491 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Показывает скрипты в исходном виде."
@@ -1942,7 +1942,7 @@
 /* [21] */		"Язык отображения скриптов, сразу (включая открытые окна)."
 }
 
-'STR#' 32592 "Options" {
+'STR#' 32192 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Параметры"
 /* [1] */			"Онлайн-перевод (тексты вне словарей)"
@@ -1952,7 +1952,7 @@
 /* [5] */			"Состояние Tapir Translator (отчёт сеанса)"
 }
 
-'STR#' 33592 "Options (aides)" {
+'STR#' 32492 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Тексты вне словарей переводятся онлайн и сохраняются в кэше на этом компьютере."
@@ -1962,7 +1962,7 @@
 /* [5] */		"Записывает полное состояние в отчёт сеанса."
 }
 
-'STR#' 32593 "Traducteur en ligne" {
+'STR#' 32193 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Онлайн-переводчик"
 /* [1] */			"DeepL"
@@ -1975,7 +1975,7 @@
 /* [8] */			"Исправление терминов..."
 }
 
-'STR#' 33593 "Traducteur en ligne (aides)" {
+'STR#' 32493 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Переводчик текстов вне словарей (ключ — в «Ключи переводчиков»)."
@@ -1988,7 +1988,7 @@
 /* [8] */		"Открывает corrections.json: термины для исправления в онлайн-переводах, применяются сразу."
 }
 
-'STR#' 32594 "Langue de l'outil" {
+'STR#' 32194 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Язык Tapir Translator"
 /* [1] */			"Как в ArchiCAD"
@@ -2014,7 +2014,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33594 "Langue de l'outil (aides)" {
+'STR#' 32494 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Язык меню и сообщений (меню: при следующем запуске ArchiCAD)."
@@ -2042,7 +2042,7 @@
 
 /* ===== uk ===== */
 
-'STR#' 32600 "Langue d'entree" {
+'STR#' 32200 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Мова оригіналу"
 /* [1] */			"Автовизначення"
@@ -2068,7 +2068,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33600 "Langue d'entree (aides)" {
+'STR#' 32500 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Автоматично визначає мову текстів скрипту."
@@ -2094,7 +2094,7 @@
 /* [21] */		"Мова, якою написані скрипти."
 }
 
-'STR#' 32601 "Langue de sortie" {
+'STR#' 32201 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Мова перекладу"
 /* [1] */			"Без перекладу"
@@ -2120,7 +2120,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33601 "Langue de sortie (aides)" {
+'STR#' 32501 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Показує скрипти в оригінальному вигляді."
@@ -2146,7 +2146,7 @@
 /* [21] */		"Мова відображення скриптів, одразу (разом із відкритими вікнами)."
 }
 
-'STR#' 32602 "Options" {
+'STR#' 32202 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Параметри"
 /* [1] */			"Онлайн-переклад (тексти поза словниками)"
@@ -2156,7 +2156,7 @@
 /* [5] */			"Стан Tapir Translator (звіт сеансу)"
 }
 
-'STR#' 33602 "Options (aides)" {
+'STR#' 32502 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Тексти поза словниками перекладаються онлайн і зберігаються в кеші на цьому комп’ютері."
@@ -2166,7 +2166,7 @@
 /* [5] */		"Записує повний стан у звіт сеансу."
 }
 
-'STR#' 32603 "Traducteur en ligne" {
+'STR#' 32203 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Онлайн-перекладач"
 /* [1] */			"DeepL"
@@ -2179,7 +2179,7 @@
 /* [8] */			"Виправлення термінів..."
 }
 
-'STR#' 33603 "Traducteur en ligne (aides)" {
+'STR#' 32503 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Перекладач текстів поза словниками (ключ — у «Ключі перекладачів»)."
@@ -2192,7 +2192,7 @@
 /* [8] */		"Відкриває corrections.json: терміни для виправлення в онлайн-перекладах, застосовуються одразу."
 }
 
-'STR#' 32604 "Langue de l'outil" {
+'STR#' 32204 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Мова Tapir Translator"
 /* [1] */			"Як в ArchiCAD"
@@ -2218,7 +2218,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33604 "Langue de l'outil (aides)" {
+'STR#' 32504 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Мова меню й повідомлень (меню: під час наступного запуску ArchiCAD)."
@@ -2246,7 +2246,7 @@
 
 /* ===== el ===== */
 
-'STR#' 32610 "Langue d'entree" {
+'STR#' 32210 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Γλώσσα εισόδου"
 /* [1] */			"Αυτόματος εντοπισμός"
@@ -2272,7 +2272,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33610 "Langue d'entree (aides)" {
+'STR#' 32510 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Αναγνωρίζει αυτόματα τη γλώσσα των κειμένων του σεναρίου."
@@ -2298,7 +2298,7 @@
 /* [21] */		"Γλώσσα στην οποία είναι γραμμένα τα σενάρια."
 }
 
-'STR#' 32611 "Langue de sortie" {
+'STR#' 32211 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Γλώσσα εξόδου"
 /* [1] */			"Χωρίς μετάφραση"
@@ -2324,7 +2324,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33611 "Langue de sortie (aides)" {
+'STR#' 32511 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Εμφανίζει τα σενάρια όπως είναι γραμμένα."
@@ -2350,7 +2350,7 @@
 /* [21] */		"Γλώσσα εμφάνισης στα σενάρια, άμεσα (και στα ανοιχτά παράθυρα)."
 }
 
-'STR#' 32612 "Options" {
+'STR#' 32212 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Επιλογές"
 /* [1] */			"Διαδικτυακή μετάφραση (κείμενα εκτός λεξικών)"
@@ -2360,7 +2360,7 @@
 /* [5] */			"Κατάσταση Tapir Translator (Αναφορά συνεδρίας)"
 }
 
-'STR#' 33612 "Options (aides)" {
+'STR#' 32512 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Τα κείμενα εκτός λεξικών μεταφράζονται διαδικτυακά και αποθηκεύονται σε αυτόν τον υπολογιστή."
@@ -2370,7 +2370,7 @@
 /* [5] */		"Γράφει την πλήρη κατάσταση στην Αναφορά συνεδρίας."
 }
 
-'STR#' 32613 "Traducteur en ligne" {
+'STR#' 32213 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Διαδικτυακός μεταφραστής"
 /* [1] */			"DeepL"
@@ -2383,7 +2383,7 @@
 /* [8] */			"Διορθώσεις όρων..."
 }
 
-'STR#' 33613 "Traducteur en ligne (aides)" {
+'STR#' 32513 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Μεταφραστής για κείμενα εκτός λεξικών (κλειδί στα Κλειδιά μεταφραστών)."
@@ -2396,7 +2396,7 @@
 /* [8] */		"Ανοίγει το corrections.json: όροι προς διόρθωση στις διαδικτυακές μεταφράσεις, εφαρμόζονται αμέσως."
 }
 
-'STR#' 32614 "Langue de l'outil" {
+'STR#' 32214 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Γλώσσα του Tapir Translator"
 /* [1] */			"Όπως το ArchiCAD"
@@ -2422,7 +2422,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33614 "Langue de l'outil (aides)" {
+'STR#' 32514 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Γλώσσα μενού και μηνυμάτων (μενού: στην επόμενη εκκίνηση του ArchiCAD)."
@@ -2450,7 +2450,7 @@
 
 /* ===== tr ===== */
 
-'STR#' 32620 "Langue d'entree" {
+'STR#' 32220 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Giriş dili"
 /* [1] */			"Otomatik algılama"
@@ -2476,7 +2476,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33620 "Langue d'entree (aides)" {
+'STR#' 32520 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Betik metinlerinin dilini otomatik olarak tanır."
@@ -2502,7 +2502,7 @@
 /* [21] */		"Betiklerin yazıldığı dil."
 }
 
-'STR#' 32621 "Langue de sortie" {
+'STR#' 32221 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Çıkış dili"
 /* [1] */			"Çeviri yok"
@@ -2528,7 +2528,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33621 "Langue de sortie (aides)" {
+'STR#' 32521 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Betikleri yazıldığı gibi gösterir."
@@ -2554,7 +2554,7 @@
 /* [21] */		"Betiklerde gösterilen dil, anında (açık pencereler dahil)."
 }
 
-'STR#' 32622 "Options" {
+'STR#' 32222 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Seçenekler"
 /* [1] */			"Çevrimiçi çeviri (sözlükte olmayan metinler)"
@@ -2564,7 +2564,7 @@
 /* [5] */			"Tapir Translator durumu (Oturum Raporu)"
 }
 
-'STR#' 33622 "Options (aides)" {
+'STR#' 32522 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Sözlükte olmayan metinler çevrimiçi çevrilir ve bu bilgisayarda önbelleğe alınır."
@@ -2574,7 +2574,7 @@
 /* [5] */		"Tam durumu Oturum Raporuna yazar."
 }
 
-'STR#' 32623 "Traducteur en ligne" {
+'STR#' 32223 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Çevrimiçi çevirmen"
 /* [1] */			"DeepL"
@@ -2587,7 +2587,7 @@
 /* [8] */			"Terim düzeltmeleri..."
 }
 
-'STR#' 33623 "Traducteur en ligne (aides)" {
+'STR#' 32523 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Sözlükte olmayan metinler için çevirmen (anahtar: Çevirmen anahtarları)."
@@ -2600,7 +2600,7 @@
 /* [8] */		"corrections.json dosyasını açar: çevrimiçi çevirilerde düzeltilecek terimler, hemen uygulanır."
 }
 
-'STR#' 32624 "Langue de l'outil" {
+'STR#' 32224 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator dili"
 /* [1] */			"ArchiCAD ile aynı"
@@ -2626,7 +2626,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33624 "Langue de l'outil (aides)" {
+'STR#' 32524 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Menü ve mesaj dili (menüler: ArchiCAD bir sonraki açılışta)."
@@ -2654,7 +2654,7 @@
 
 /* ===== nl ===== */
 
-'STR#' 32630 "Langue d'entree" {
+'STR#' 32230 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Brontaal"
 /* [1] */			"Automatisch detecteren"
@@ -2680,7 +2680,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33630 "Langue d'entree (aides)" {
+'STR#' 32530 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Herkent automatisch de taal van de scriptteksten."
@@ -2706,7 +2706,7 @@
 /* [21] */		"Taal waarin de scripts geschreven zijn."
 }
 
-'STR#' 32631 "Langue de sortie" {
+'STR#' 32231 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Doeltaal"
 /* [1] */			"Geen vertaling"
@@ -2732,7 +2732,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33631 "Langue de sortie (aides)" {
+'STR#' 32531 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Toont de scripts zoals ze geschreven zijn."
@@ -2758,7 +2758,7 @@
 /* [21] */		"Taal die in de scripts wordt getoond, direct (ook in open vensters)."
 }
 
-'STR#' 32632 "Options" {
+'STR#' 32232 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Opties"
 /* [1] */			"Online vertaling (teksten buiten de woordenboeken)"
@@ -2768,7 +2768,7 @@
 /* [5] */			"Status van Tapir Translator (Sessierapport)"
 }
 
-'STR#' 33632 "Options (aides)" {
+'STR#' 32532 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Teksten buiten de woordenboeken worden online vertaald en op deze computer bewaard."
@@ -2778,7 +2778,7 @@
 /* [5] */		"Schrijft de volledige status naar het sessierapport."
 }
 
-'STR#' 32633 "Traducteur en ligne" {
+'STR#' 32233 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Online vertaler"
 /* [1] */			"DeepL"
@@ -2791,7 +2791,7 @@
 /* [8] */			"Termcorrecties..."
 }
 
-'STR#' 33633 "Traducteur en ligne (aides)" {
+'STR#' 32533 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Vertaler voor teksten buiten de woordenboeken (sleutel bij Vertaalsleutels)."
@@ -2804,7 +2804,7 @@
 /* [8] */		"Opent corrections.json: te corrigeren termen in online vertalingen, direct toegepast."
 }
 
-'STR#' 32634 "Langue de l'outil" {
+'STR#' 32234 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Taal van Tapir Translator"
 /* [1] */			"Zoals ArchiCAD"
@@ -2830,7 +2830,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33634 "Langue de l'outil (aides)" {
+'STR#' 32534 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Taal van menu's en meldingen (menu's: bij de volgende start van ArchiCAD)."
@@ -2858,7 +2858,7 @@
 
 /* ===== sv ===== */
 
-'STR#' 32640 "Langue d'entree" {
+'STR#' 32240 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Källspråk"
 /* [1] */			"Automatisk identifiering"
@@ -2884,7 +2884,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33640 "Langue d'entree (aides)" {
+'STR#' 32540 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Känner automatiskt igen språket i skriptets texter."
@@ -2910,7 +2910,7 @@
 /* [21] */		"Språket som skripten är skrivna på."
 }
 
-'STR#' 32641 "Langue de sortie" {
+'STR#' 32241 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Målspråk"
 /* [1] */			"Ingen översättning"
@@ -2936,7 +2936,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33641 "Langue de sortie (aides)" {
+'STR#' 32541 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Visar skripten som de är skrivna."
@@ -2962,7 +2962,7 @@
 /* [21] */		"Språk som visas i skripten, direkt (även öppna fönster)."
 }
 
-'STR#' 32642 "Options" {
+'STR#' 32242 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Alternativ"
 /* [1] */			"Onlineöversättning (texter utanför ordlistorna)"
@@ -2972,7 +2972,7 @@
 /* [5] */			"Status för Tapir Translator (Sessionsrapport)"
 }
 
-'STR#' 33642 "Options (aides)" {
+'STR#' 32542 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Texter utanför ordlistorna översätts online och sparas i cache på den här datorn."
@@ -2982,7 +2982,7 @@
 /* [5] */		"Skriver hela statusen till sessionsrapporten."
 }
 
-'STR#' 32643 "Traducteur en ligne" {
+'STR#' 32243 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Onlineöversättare"
 /* [1] */			"DeepL"
@@ -2995,7 +2995,7 @@
 /* [8] */			"Termkorrigeringar..."
 }
 
-'STR#' 33643 "Traducteur en ligne (aides)" {
+'STR#' 32543 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Översättare för texter utanför ordlistorna (nyckel under Översättarnycklar)."
@@ -3008,7 +3008,7 @@
 /* [8] */		"Öppnar corrections.json: termer att rätta i onlineöversättningar, tillämpas direkt."
 }
 
-'STR#' 32644 "Langue de l'outil" {
+'STR#' 32244 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Språk för Tapir Translator"
 /* [1] */			"Samma som ArchiCAD"
@@ -3034,7 +3034,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33644 "Langue de l'outil (aides)" {
+'STR#' 32544 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Språk för menyer och meddelanden (menyer: vid nästa start av ArchiCAD)."
@@ -3062,7 +3062,7 @@
 
 /* ===== no ===== */
 
-'STR#' 32650 "Langue d'entree" {
+'STR#' 32250 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Kildespråk"
 /* [1] */			"Automatisk gjenkjenning"
@@ -3088,7 +3088,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33650 "Langue d'entree (aides)" {
+'STR#' 32550 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Gjenkjenner automatisk språket i skripttekstene."
@@ -3114,7 +3114,7 @@
 /* [21] */		"Språket skriptene er skrevet på."
 }
 
-'STR#' 32651 "Langue de sortie" {
+'STR#' 32251 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Målspråk"
 /* [1] */			"Ingen oversettelse"
@@ -3140,7 +3140,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33651 "Langue de sortie (aides)" {
+'STR#' 32551 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Viser skriptene slik de er skrevet."
@@ -3166,7 +3166,7 @@
 /* [21] */		"Språk som vises i skriptene, umiddelbart (også åpne vinduer)."
 }
 
-'STR#' 32652 "Options" {
+'STR#' 32252 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Alternativer"
 /* [1] */			"Nettbasert oversettelse (tekster utenfor ordlistene)"
@@ -3176,7 +3176,7 @@
 /* [5] */			"Status for Tapir Translator (Øktrapport)"
 }
 
-'STR#' 33652 "Options (aides)" {
+'STR#' 32552 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Tekster utenfor ordlistene oversettes på nett og lagres på denne datamaskinen."
@@ -3186,7 +3186,7 @@
 /* [5] */		"Skriver full status til øktrapporten."
 }
 
-'STR#' 32653 "Traducteur en ligne" {
+'STR#' 32253 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Nettbasert oversetter"
 /* [1] */			"DeepL"
@@ -3199,7 +3199,7 @@
 /* [8] */			"Termrettelser..."
 }
 
-'STR#' 33653 "Traducteur en ligne (aides)" {
+'STR#' 32553 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Oversetter for tekster utenfor ordlistene (nøkkel under Oversetternøkler)."
@@ -3212,7 +3212,7 @@
 /* [8] */		"Åpner corrections.json: termer som skal rettes i nettbaserte oversettelser, brukes straks."
 }
 
-'STR#' 32654 "Langue de l'outil" {
+'STR#' 32254 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Språk for Tapir Translator"
 /* [1] */			"Samme som ArchiCAD"
@@ -3238,7 +3238,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33654 "Langue de l'outil (aides)" {
+'STR#' 32554 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Språk for menyer og meldinger (menyer: ved neste oppstart av ArchiCAD)."
@@ -3266,7 +3266,7 @@
 
 /* ===== fi ===== */
 
-'STR#' 32660 "Langue d'entree" {
+'STR#' 32260 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lähdekieli"
 /* [1] */			"Automaattinen tunnistus"
@@ -3292,7 +3292,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33660 "Langue d'entree (aides)" {
+'STR#' 32560 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Tunnistaa skriptin tekstien kielen automaattisesti."
@@ -3318,7 +3318,7 @@
 /* [21] */		"Kieli, jolla skriptit on kirjoitettu."
 }
 
-'STR#' 32661 "Langue de sortie" {
+'STR#' 32261 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Kohdekieli"
 /* [1] */			"Ei käännöstä"
@@ -3344,7 +3344,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33661 "Langue de sortie (aides)" {
+'STR#' 32561 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Näyttää skriptit sellaisina kuin ne on kirjoitettu."
@@ -3370,7 +3370,7 @@
 /* [21] */		"Skripteissä näytettävä kieli, heti (myös avoimet ikkunat)."
 }
 
-'STR#' 32662 "Options" {
+'STR#' 32262 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Asetukset"
 /* [1] */			"Verkkokäännös (sanastojen ulkopuoliset tekstit)"
@@ -3380,7 +3380,7 @@
 /* [5] */			"Tapir Translatorin tila (istuntoraportti)"
 }
 
-'STR#' 33662 "Options (aides)" {
+'STR#' 32562 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Sanastojen ulkopuoliset tekstit käännetään verkossa ja tallennetaan tälle koneelle."
@@ -3390,7 +3390,7 @@
 /* [5] */		"Kirjoittaa koko tilan istuntoraporttiin."
 }
 
-'STR#' 32663 "Traducteur en ligne" {
+'STR#' 32263 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Verkkokääntäjä"
 /* [1] */			"DeepL"
@@ -3403,7 +3403,7 @@
 /* [8] */			"Termikorjaukset..."
 }
 
-'STR#' 33663 "Traducteur en ligne (aides)" {
+'STR#' 32563 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Kääntäjä sanastojen ulkopuolisille teksteille (avain: Kääntäjien avaimet)."
@@ -3416,7 +3416,7 @@
 /* [8] */		"Avaa corrections.json-tiedoston: verkkokäännöksissä korjattavat termit, käytössä heti."
 }
 
-'STR#' 32664 "Langue de l'outil" {
+'STR#' 32264 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translatorin kieli"
 /* [1] */			"Kuten ArchiCAD"
@@ -3442,7 +3442,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33664 "Langue de l'outil (aides)" {
+'STR#' 32564 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Valikkojen ja viestien kieli (valikot: ArchiCADin seuraavassa käynnistyksessä)."
@@ -3470,7 +3470,7 @@
 
 /* ===== ja ===== */
 
-'STR#' 32670 "Langue d'entree" {
+'STR#' 32270 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"入力言語"
 /* [1] */			"自動検出"
@@ -3496,7 +3496,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33670 "Langue d'entree (aides)" {
+'STR#' 32570 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"スクリプトのテキストの言語を自動で判別します。"
@@ -3522,7 +3522,7 @@
 /* [21] */		"スクリプトが書かれている言語。"
 }
 
-'STR#' 32671 "Langue de sortie" {
+'STR#' 32271 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"出力言語"
 /* [1] */			"翻訳しない"
@@ -3548,7 +3548,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33671 "Langue de sortie (aides)" {
+'STR#' 32571 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"スクリプトを書かれたとおりに表示します。"
@@ -3574,7 +3574,7 @@
 /* [21] */		"スクリプトに表示する言語（開いているウィンドウにも即時反映）。"
 }
 
-'STR#' 32672 "Options" {
+'STR#' 32272 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"オプション"
 /* [1] */			"オンライン翻訳（辞書にないテキスト）"
@@ -3584,7 +3584,7 @@
 /* [5] */			"Tapir Translator の状態（セッションレポート）"
 }
 
-'STR#' 33672 "Options (aides)" {
+'STR#' 32572 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"辞書にないテキストはオンラインで翻訳され、このコンピューターにキャッシュされます。"
@@ -3594,7 +3594,7 @@
 /* [5] */		"状態の詳細をセッションレポートに書き込みます。"
 }
 
-'STR#' 32673 "Traducteur en ligne" {
+'STR#' 32273 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"オンライン翻訳"
 /* [1] */			"DeepL"
@@ -3607,7 +3607,7 @@
 /* [8] */			"用語の修正..."
 }
 
-'STR#' 33673 "Traducteur en ligne (aides)" {
+'STR#' 32573 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"辞書にないテキストの翻訳サービス（キーは「翻訳サービスのキー」で入力）。"
@@ -3620,7 +3620,7 @@
 /* [8] */		"corrections.json を開きます。オンライン翻訳で修正する用語で、すぐに反映されます。"
 }
 
-'STR#' 32674 "Langue de l'outil" {
+'STR#' 32274 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator の言語"
 /* [1] */			"ArchiCAD と同じ"
@@ -3646,7 +3646,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33674 "Langue de l'outil (aides)" {
+'STR#' 32574 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"メニューとメッセージの言語（メニューは次回の ArchiCAD 起動時に反映）。"
@@ -3674,7 +3674,7 @@
 
 /* ===== ko ===== */
 
-'STR#' 32680 "Langue d'entree" {
+'STR#' 32280 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"입력 언어"
 /* [1] */			"자동 감지"
@@ -3700,7 +3700,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33680 "Langue d'entree (aides)" {
+'STR#' 32580 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"스크립트 텍스트의 언어를 자동으로 인식합니다."
@@ -3726,7 +3726,7 @@
 /* [21] */		"스크립트가 작성된 언어입니다."
 }
 
-'STR#' 32681 "Langue de sortie" {
+'STR#' 32281 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"출력 언어"
 /* [1] */			"번역 안 함"
@@ -3752,7 +3752,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33681 "Langue de sortie (aides)" {
+'STR#' 32581 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"스크립트를 작성된 그대로 표시합니다."
@@ -3778,7 +3778,7 @@
 /* [21] */		"스크립트에 표시되는 언어(열린 창에도 즉시 적용)."
 }
 
-'STR#' 32682 "Options" {
+'STR#' 32282 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"옵션"
 /* [1] */			"온라인 번역(사전에 없는 텍스트)"
@@ -3788,7 +3788,7 @@
 /* [5] */			"Tapir Translator 상태(세션 보고서)"
 }
 
-'STR#' 33682 "Options (aides)" {
+'STR#' 32582 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"사전에 없는 텍스트는 온라인으로 번역된 후 이 컴퓨터에 캐시됩니다."
@@ -3798,7 +3798,7 @@
 /* [5] */		"전체 상태를 세션 보고서에 기록합니다."
 }
 
-'STR#' 32683 "Traducteur en ligne" {
+'STR#' 32283 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"온라인 번역기"
 /* [1] */			"DeepL"
@@ -3811,7 +3811,7 @@
 /* [8] */			"용어 수정..."
 }
 
-'STR#' 33683 "Traducteur en ligne (aides)" {
+'STR#' 32583 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"사전에 없는 텍스트용 번역기(키는 번역기 키에서 입력)."
@@ -3824,7 +3824,7 @@
 /* [8] */		"corrections.json을 엽니다. 온라인 번역에서 고칠 용어이며 즉시 적용됩니다."
 }
 
-'STR#' 32684 "Langue de l'outil" {
+'STR#' 32284 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator 언어"
 /* [1] */			"ArchiCAD와 동일"
@@ -3850,7 +3850,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33684 "Langue de l'outil (aides)" {
+'STR#' 32584 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"메뉴와 메시지 언어(메뉴는 다음 ArchiCAD 시작 시 적용)."
@@ -3878,7 +3878,7 @@
 
 /* ===== zh ===== */
 
-'STR#' 32690 "Langue d'entree" {
+'STR#' 32290 "Langue d'entree" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"输入语言"
 /* [1] */			"自动检测"
@@ -3904,7 +3904,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33690 "Langue d'entree (aides)" {
+'STR#' 32590 "Langue d'entree (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"自动识别脚本文本的语言。"
@@ -3930,7 +3930,7 @@
 /* [21] */		"脚本所用的语言。"
 }
 
-'STR#' 32691 "Langue de sortie" {
+'STR#' 32291 "Langue de sortie" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"输出语言"
 /* [1] */			"不翻译"
@@ -3956,7 +3956,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33691 "Langue de sortie (aides)" {
+'STR#' 32591 "Langue de sortie (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"按原样显示脚本。"
@@ -3982,7 +3982,7 @@
 /* [21] */		"脚本中显示的语言（即时生效，包括已打开的窗口）。"
 }
 
-'STR#' 32692 "Options" {
+'STR#' 32292 "Options" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"选项"
 /* [1] */			"在线翻译（词典以外的文本）"
@@ -3992,7 +3992,7 @@
 /* [5] */			"Tapir Translator 状态（会话报告）"
 }
 
-'STR#' 33692 "Options (aides)" {
+'STR#' 32592 "Options (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"词典以外的文本在线翻译后缓存在本机。"
@@ -4002,7 +4002,7 @@
 /* [5] */		"将完整状态写入会话报告。"
 }
 
-'STR#' 32693 "Traducteur en ligne" {
+'STR#' 32293 "Traducteur en ligne" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"在线翻译"
 /* [1] */			"DeepL"
@@ -4015,7 +4015,7 @@
 /* [8] */			"术语更正..."
 }
 
-'STR#' 33693 "Traducteur en ligne (aides)" {
+'STR#' 32593 "Traducteur en ligne (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"词典以外文本使用的翻译服务（在“翻译服务密钥”中输入密钥）。"
@@ -4028,7 +4028,7 @@
 /* [8] */		"打开 corrections.json：需在在线翻译中更正的术语，立即生效。"
 }
 
-'STR#' 32694 "Langue de l'outil" {
+'STR#' 32294 "Langue de l'outil" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Tapir Translator 语言"
 /* [1] */			"与 ArchiCAD 相同"
@@ -4054,7 +4054,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 33694 "Langue de l'outil (aides)" {
+'STR#' 32594 "Langue de l'outil (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"菜单和消息的语言（菜单在下次启动 ArchiCAD 时生效）。"

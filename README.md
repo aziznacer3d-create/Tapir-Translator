@@ -235,7 +235,8 @@ messages du Rapport de session) existe dans les 20 langues d'ArchiCAD.
   son démarrage, changent au **prochain démarrage**.
 - Les textes sont dans `Src/TT_Textes.cpp` (une ligne par texte, une colonne par langue). Les menus sont
   générés au build par `Tools/GenererMenus.cpp` dans `RFIX/Tapir_TranslatorMenus.grc` (STR#
-  32500 + 10 × langue, aides à + 1000) ; l'add-on n'enregistre que ceux de la langue choisie.
+  32100 + 10 × langue, aides à + 300, tous sous 32767 car l'API d'ArchiCAD les lit en entier signé 16 bits) ;
+  l'add-on n'enregistre que ceux de la langue choisie.
 - Le diagnostic détaillé (Options > État) reste en français, ou en anglais pour les autres langues.
 - Traductions à faire relire par des locuteurs natifs.
 
