@@ -121,13 +121,21 @@ canvas_ = tk.Canvas(root, width=120, height=40)
 canvas_text = canvas_.create_text(-5, 20, text=t("Floor plan"), anchor="w")
 canvas_.pack()
 
-# Combobox values and Entry contents are data: never translated.
-combo = ttk.Combobox(root, values=["Walls", "Slabs"])
+# Combobox (values translated since 0.10.0: the script reads back its originals, through get()
+# and through its variable), Listbox items (translated), and an Entry (user input: never).
+combo_var = tk.StringVar()
+combo = ttk.Combobox(root, values=["Walls", "Slabs"], textvariable=combo_var)
 combo.set("Walls")
 combo.pack()
+listbox = tk.Listbox(root, height=2)
+listbox.insert("end", "Walls", "Slabs")
+listbox.pack()
 entry = tk.Entry(root)
 entry.insert(0, "Walls")
 entry.pack()
+# A label with a "/" between words: a separator, not a path (it may be sent online).
+lbl_slash = tk.Label(root, text="Check / Element ID")
+lbl_slash.pack()
 
 
 # Returns the real Tcl interpreter. When the layer is active, root.tk is its proxy and the
@@ -153,10 +161,18 @@ def state():
     e.append(("tab", r.call(str(notebook_), "tab", 0, "-text"), notebook_.tab(0, "text")))
     e.append(("heading", r.call(str(tree), "heading", "#0", "-text"), tree.heading("#0", "text")))
     e.append(("tree_row", r.call(str(tree), "item", line, "-text"), tree.item(line, "text")))
+    e.append(("tree_value", r.call(str(tree), "set", line, "value"), tree.set(line, "value")))
+    e.append(("tree_values", " ".join(str(v) for v in r.splitlist(r.call(str(tree), "item", line, "-values"))),
+              " ".join(tree.item(line, "values"))))
     e.append(("canvas", r.call(str(canvas_), "itemcget", canvas_text, "-text"), canvas_.itemcget(canvas_text, "text")))
-    # For the Combobox, "displayed" = its list of values joined by spaces, "seen" = current value.
-    e.append(("combo", " ".join(str(v) for v in combo.cget("values")), combo.get()))
+    # Combobox: "displayed" = its list of values joined by spaces (read in Tcl), "seen" = the
+    # value read by the script; its variable too.
+    e.append(("combo", " ".join(str(v) for v in r.splitlist(r.call(str(combo), "cget", "-values"))), combo.get()))
+    e.append(("combo_var", r.globalgetvar(str(combo_var)), combo_var.get()))
+    e.append(("listbox", " ".join(str(v) for v in r.splitlist(r.call(str(listbox), "get", 0, "end"))),
+              " ".join(listbox.get(0, "end"))))
     e.append(("entry", entry.get(), entry.get()))
+    e.append(("slash", r.call(str(lbl_slash), "cget", "-text"), lbl_slash.cget("text")))
     # The script logic compares original texts: it must keep working while translated
     # ("ok" when the comparisons still succeed, "BROKEN" otherwise).
     e.append(("logic", "ok" if btn_close.cget("text") == t("Close") and status.get() in (t("Ready"), t("Done")) else "BROKEN", ""))

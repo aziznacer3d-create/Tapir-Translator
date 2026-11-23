@@ -29,8 +29,12 @@ How it works, step by step
    message boxes, file dialog titles, variables shown by a Label / Button...). It
    remembers the original of each displayed text, so values read back by the script
    (cget, StringVar.get, entrycget, wm title) are returned in the ORIGINAL language:
-   the script's logic never sees the translation. Data (view names, lists, Treeview
-   rows, Entry, Text, Combobox -values) is never touched.
+   the script's logic never sees the translation. Since 0.10.0 the rows of ttk.Treeview
+   (item text and values), the items of a Listbox and the -values of a ttk.Combobox are
+   translated too (scripts use them for result labels such as "16 found"); what the
+   script reads back (item, set, get, cget -values, the combobox variable) is again the
+   original. Texts typed by the user (Entry, Text, free text of a combobox) are never
+   touched, and data such as paths, codes and numbers never leaves the computer.
 
 4. Dictionaries. _Engine loads, from lowest to highest priority, the add-on's common
    dictionary (_common.json), the user's dictionary (_user.json) and the script's own
@@ -66,7 +70,7 @@ Every internal error is written to log.txt and never reaches the script.
 import os
 import sys
 
-LAYER_VERSION = "0.9.0"
+LAYER_VERSION = "0.10.0"
 _PERIOD_MS = 300            # Period (ms) of the live check: settings / dictionaries reload, arrived translations
 _LOG_SIZE = 512 * 1024  # Beyond this size (bytes) the log file is deleted and starts again from zero
 
@@ -817,6 +821,8 @@ class _Automatic(object):
         fewer than 2 letters, for texts containing a path separator, URL, "@" or a known
         file extension, and for single words containing digits, "_" or an inner ".",
         or made of at most 6 capital letters (codes); True otherwise.
+        A "/" surrounded by spaces is a separator between words, not a path
+        ("Check / Element ID" is a label): only "\\" or a "/" touching a character counts.
         """
         import re
         t = text.strip()
@@ -824,7 +830,7 @@ class _Automatic(object):
         if len(t) < 2 or len(t) > 600 or sum(1 for c in t if c.isalpha()) < 2:
             return False
         # Step 2: paths, URLs, e-mail addresses, file names.
-        if re.search(r"[\\/]|://|@|\.(py|json|txt|csv|pln|pla|tpl|ifc|dwg|dxf|xlsx?|gsm|png|jpe?g|pdf)\b", t, re.I):
+        if re.search(r"\\|\S/|/\S|://|@|\.(py|json|txt|csv|pln|pla|tpl|ifc|dwg|dxf|xlsx?|gsm|png|jpe?g|pdf)\b", t, re.I):
             return False
         # Step 3: single words that look like identifiers or codes.
         if " " not in t:
@@ -1069,6 +1075,17 @@ class _Proxy(object):
         # "tab", "header" or "canvas".
         self._registry = {}
         self._variables_ = {}   # Name of a displayed Tcl variable -> [original, displayed]
+        # Treeview item values: (tree path, item id) -> [original tuple, displayed tuple]
+        self._tree_values = {}
+        # Listbox items: listbox path -> {displayed text: original text}
+        self._lists = {}
+        # Combobox lists: combobox path -> {"values": [originals, displayed] or None,
+        # "map": {displayed: original}}
+        self._combos = {}
+        # Tcl variable of a combobox (-textvariable) -> combobox path
+        self._input_vars = {}
+        # Tk class of each widget path met by a list command (cached "winfo class")
+        self._classes = {}
 
     def __getattr__(self, name):
         """Forward every attribute not defined here to the real interpreter."""
@@ -1203,7 +1220,9 @@ class _Proxy(object):
         Handled: "wm title", standard dialogs, widget sub-commands (".path cmd ...")
         and widget creation ("class .path -option value ...").
         """
-        n = len(argv)
+        # _tkinter stops a command at its first None argument (tkinter passes optional
+        # arguments as None, e.g. Treeview.set): only the arguments before it count.
+        n = next((i for i, a in enumerate(argv) if a is None), len(argv))
         if n < 2 or not isinstance(argv[0], str):
             return None
         a0 = argv[0]
@@ -1242,7 +1261,230 @@ class _Proxy(object):
             for opt, original, displayed in self._options(argv, 2):
                 self._note(("opt", path, None, opt), original, displayed)
             self._text_variable(argv, 2, a0)
+            # A combobox: its list of values and its variable (see _combo_options).
+            if a0 == "ttk::combobox":
+                self._classes[path] = "TCombobox"
+                self._combo_options(argv, 2, n, path)
         return None
+
+    # --- lists: ttk.Treeview rows, Listbox items, ttk.Combobox values ---------------------
+    def _class(self, path):
+        """Tk class of the widget 'path' ("Treeview", "Listbox", "TCombobox"...), cached."""
+        c = self._classes.get(path)
+        if c is None:
+            try:
+                c = str(self._real.call("winfo", "class", path))
+            except Exception:
+                c = ""
+            self._classes[path] = c
+        return c
+
+    def _tr_list(self, value):
+        """Translate every element of a Tcl list given as a string or a tuple.
+
+        Output: (originals, displayed), two tuples of str of the same length. The
+        displayed tuple is passed to Tcl as is (_tkinter turns it into a Tcl list).
+        """
+        if value is None or value == "":
+            return (), ()
+        originals = tuple(str(v) for v in self._real.splitlist(value))
+        return originals, tuple(self._tr(v) for v in originals)
+
+    def _as_tuple(self, value):
+        """A Tcl list result (tuple, string or Tcl object) as a tuple of str."""
+        try:
+            return tuple(str(v) for v in self._real.splitlist(value))
+        except Exception:
+            return (str(value),)
+
+    def _render_values(self, path, item, res):
+        """Give back the original values of a Treeview item if 'res' is what we display."""
+        e = self._tree_values.get((path, item))
+        if e is not None and self._as_tuple(res) == e[1]:
+            return e[0]
+        return res
+
+    def _column_index(self, path, column):
+        """Index in the item values of the Treeview column 'column' (id, name or "#n").
+
+        Returns None for the tree column "#0" or an unknown column.
+        """
+        try:
+            cid = str(self._real.call(path, "column", column, "-id"))
+            columns = self._as_tuple(self._real.call(path, "cget", "-columns"))
+            return columns.index(cid) if cid in columns else None
+        except Exception:
+            return None
+
+    def _treeview(self, argv, path, sub, n):
+        """Handle the Treeview commands that carry row texts.
+
+        insert parent index ?-id id? -text t -values {v ...}: translated; the item id
+        (the command's result) keys what is recorded. item id ?-option value...?: set or
+        query (-text, -values, or the whole description). set id ?column ?value??: one
+        value or all of them. Output: None, a result converter, or False when the
+        command is not one of those (the generic handling then continues).
+        """
+        if sub == "insert" and n >= 4:
+            text = values = None
+            i = 4
+            while i + 1 < n:
+                if argv[i] == "-text" and isinstance(argv[i + 1], str):
+                    original = argv[i + 1]
+                    argv[i + 1] = self._tr(original)
+                    text = (original, argv[i + 1])
+                elif argv[i] == "-values":
+                    values = self._tr_list(argv[i + 1])
+                    argv[i + 1] = values[1]
+                i += 2
+            if text is None and values is None:
+                return None
+
+            def note(r, text=text, values=values):
+                # The result of "insert" is the new item id.
+                item = str(r)
+                if text is not None:
+                    self._note(("ttext", path, item, "-text"), text[0], text[1])
+                if values is not None:
+                    self._tree_values[(path, item)] = [values[0], values[1]]
+                return r
+            return note
+        if sub == "item" and n >= 3:
+            item = str(argv[2])
+            if n == 3:
+                # Whole description: "-text t -image ... -values {...} ...".
+                def whole(r):
+                    parts = list(self._real.splitlist(r))
+                    for k in range(0, len(parts) - 1, 2):
+                        if str(parts[k]) == "-text":
+                            parts[k + 1] = self._render(("ttext", path, item, "-text"), parts[k + 1])
+                        elif str(parts[k]) == "-values":
+                            parts[k + 1] = self._render_values(path, item, parts[k + 1])
+                    return tuple(parts)
+                return whole
+            if n == 4:
+                if argv[3] == "-text":
+                    key = ("ttext", path, item, "-text")
+                    return lambda r: self._render(key, r)
+                if argv[3] == "-values":
+                    return lambda r: self._render_values(path, item, r)
+                return None
+            i = 3
+            while i + 1 < n:
+                if argv[i] == "-text" and isinstance(argv[i + 1], str):
+                    original = argv[i + 1]
+                    argv[i + 1] = self._tr(original)
+                    self._note(("ttext", path, item, "-text"), original, argv[i + 1])
+                elif argv[i] == "-values":
+                    originals, displayed = self._tr_list(argv[i + 1])
+                    argv[i + 1] = displayed
+                    self._tree_values[(path, item)] = [originals, displayed]
+                i += 2
+            return None
+        if sub == "set" and n >= 3:
+            item = str(argv[2])
+            if n == 3:
+                # All values: "column value column value ...".
+                def every(r):
+                    e = self._tree_values.get((path, item))
+                    parts = list(self._real.splitlist(r))
+                    if e is not None:
+                        for k in range(0, len(parts) - 1, 2):
+                            idx = self._column_index(path, parts[k])
+                            if idx is not None and idx < len(e[1]) and str(parts[k + 1]) == e[1][idx]:
+                                parts[k + 1] = e[0][idx]
+                    return tuple(parts)
+                return every
+            idx = self._column_index(path, argv[3])
+            if n == 4:
+                def one(r, idx=idx):
+                    e = self._tree_values.get((path, item))
+                    if e is not None and idx is not None and idx < len(e[1]) and str(r) == e[1][idx]:
+                        return e[0][idx]
+                    return r
+                return one
+            # Setting one value: translate it and update the recorded values.
+            original = str(argv[4])
+            argv[4] = self._tr(original)
+            if idx is not None:
+                e = self._tree_values.get((path, item))
+                if e is None:
+                    try:
+                        current = self._as_tuple(self._real.call(path, "item", item, "-values"))
+                    except Exception:
+                        current = ()
+                    e = [current, current]
+                    self._tree_values[(path, item)] = e
+                originals, displayed = list(e[0]), list(e[1])
+                while len(originals) <= idx:
+                    originals.append("")
+                    displayed.append("")
+                originals[idx], displayed[idx] = original, argv[4]
+                e[0], e[1] = tuple(originals), tuple(displayed)
+            return None
+        return False
+
+    def _listbox(self, argv, path, sub, n):
+        """Handle Listbox insert (translate the items) and get (give back the originals).
+
+        Items are matched by their displayed text (indexes move when items are
+        inserted or deleted). Output: None, a converter, or False (not handled here).
+        """
+        if sub == "insert" and n >= 4:
+            items = self._lists.setdefault(path, {})
+            for k in range(3, n):
+                original = str(argv[k])
+                argv[k] = self._tr(original)
+                items[argv[k]] = original
+            return None
+        if sub == "get" and n >= 3:
+            items = self._lists.get(path, {})
+
+            def originals(r):
+                if isinstance(r, tuple):
+                    return tuple(items.get(str(x), x) for x in r)
+                return items.get(str(r), r)
+            return originals
+        return False
+
+    def _combo_options(self, argv, start, n, path):
+        """Translate the -values of a combobox in argv[start:n] and note its -textvariable."""
+        combo = self._combos.setdefault(path, {"values": None, "map": {}})
+        i = start
+        while i + 1 < n:
+            if argv[i] == "-values":
+                originals, displayed = self._tr_list(argv[i + 1])
+                argv[i + 1] = displayed
+                combo["values"] = [originals, displayed]
+                combo["map"] = {d: o for o, d in zip(originals, displayed)}
+            elif argv[i] == "-textvariable" and argv[i + 1]:
+                self._input_vars[str(argv[i + 1])] = path
+            i += 2
+
+    def _combobox(self, argv, path, sub, n):
+        """Handle the combobox commands: configure -values, cget -values, get, set.
+
+        get gives back the original of a value of the list (a text typed by the user is
+        returned unchanged); set with a value of the list displays its translation.
+        Output: None, a converter, or False (not handled here).
+        """
+        combo = self._combos.setdefault(path, {"values": None, "map": {}})
+        if sub == "configure" and n >= 4:
+            self._combo_options(argv, 2, n, path)
+            return None
+        if sub == "cget" and n == 3 and argv[2] == "-values":
+            def values(r):
+                v = combo["values"]
+                return v[0] if v is not None and self._as_tuple(r) == v[1] else r
+            return values
+        if sub == "get" and n == 2:
+            return lambda r: combo["map"].get(str(r), r)
+        if sub == "set" and n == 3:
+            v = combo["values"]
+            if v is not None and str(argv[2]) in v[0]:
+                argv[2] = v[1][v[0].index(str(argv[2]))]
+            return None
+        return False
 
     def _sub_command(self, argv, path, sub, n):
         """Handle ".path sub-command ..." for the sub-commands that carry displayed texts.
@@ -1253,6 +1495,16 @@ class _Proxy(object):
         ttk.Notebook add / tab, ttk.Treeview heading, canvas create text /
         itemconfigure / itemcget.
         """
+        # --- lists (Treeview rows, Listbox items, Combobox values): only for the
+        # sub-commands they use, so that other widgets never pay the "winfo class" call
+        if sub in ("insert", "item", "set", "get", "configure", "cget"):
+            cls = self._class(path)
+            handler = {"Treeview": self._treeview, "Listbox": self._listbox, "TCombobox": self._combobox}.get(cls)
+            if handler is not None:
+                res = handler(argv, path, sub, n)
+                if res is not False:
+                    return res
+
         # --- widget options: configure / cget
         if sub == "configure":
             if n >= 4:
@@ -1409,6 +1661,10 @@ class _Proxy(object):
             shown = self._tr(value)
             e[0], e[1] = value, shown
             return function(name, shown, *rest)
+        # Variable of a combobox: a value of its list is displayed translated.
+        combo = self._combos.get(self._input_vars.get(str(name), ""))
+        if combo is not None and combo["values"] is not None and isinstance(value, str) and value in combo["values"][0]:
+            return function(name, combo["values"][1][combo["values"][0].index(value)], *rest)
         return function(name, value, *rest)
 
     def _read_variable(self, function, name, rest):
@@ -1422,6 +1678,10 @@ class _Proxy(object):
         e = self._variables_.get(str(name))
         if e is not None and e[1] is not None and isinstance(r, str) and r == e[1]:
             return e[0]
+        # Variable of a combobox: the translation of a value of its list reads as the original.
+        combo = self._combos.get(self._input_vars.get(str(name), ""))
+        if combo is not None and isinstance(r, str):
+            return combo["map"].get(r, r)
         return r
 
     def globalsetvar(self, name, value, *rest):
@@ -1474,6 +1734,8 @@ class _Proxy(object):
                     current = real.call(path, "heading", sub_id, opt)
                 elif kind == "canvas":
                     current = real.call(path, "itemcget", sub_id, opt)
+                elif kind == "ttext":
+                    current = real.call(path, "item", sub_id, opt)
                 else:
                     continue
                 if str(current) != old:
@@ -1493,6 +1755,8 @@ class _Proxy(object):
                     real.call(path, "heading", sub_id, opt, new)
                 elif kind == "canvas":
                     real.call(path, "itemconfigure", sub_id, opt, new)
+                elif kind == "ttext":
+                    real.call(path, "item", sub_id, opt, new)
                 # Step 4: remember what is displayed now.
                 self._registry[key][1] = new
             except Exception:
@@ -1522,6 +1786,63 @@ class _Proxy(object):
                     e[1] = new
             except Exception:
                 self._variables_.pop(name, None)
+        # Part 3: Treeview item values (only rows still showing what we displayed).
+        for key in list(self._tree_values.keys()):
+            originals, old = self._tree_values[key]
+            new = tuple(_engine.translate(o) for o in originals)
+            if new == old:
+                continue
+            path, item = key
+            try:
+                if self._as_tuple(real.call(path, "item", item, "-values")) != old:
+                    del self._tree_values[key]
+                    continue
+                real.call(path, "item", item, "-values", new)
+                self._tree_values[key][1] = new
+            except Exception:
+                # Item deleted, tree destroyed...
+                self._tree_values.pop(key, None)
+        # Part 4: Listbox items, replaced in place (the selection of the item is kept).
+        for path in list(self._lists.keys()):
+            items = self._lists[path]
+            try:
+                for i in range(int(real.call(path, "size"))):
+                    current = str(real.call(path, "get", i))
+                    original = items.get(current)
+                    if original is None:
+                        continue
+                    new = _engine.translate(original)
+                    if new == current:
+                        continue
+                    selected = bool(real.call(path, "selection", "includes", i))
+                    real.call(path, "delete", i)
+                    real.call(path, "insert", i, new)
+                    if selected:
+                        real.call(path, "selection", "set", i)
+                    items[new] = original
+            except Exception:
+                self._lists.pop(path, None)
+        # Part 5: Combobox lists, and the displayed value when it is one of them.
+        for path in list(self._combos.keys()):
+            combo = self._combos[path]
+            v = combo["values"]
+            if v is None:
+                continue
+            new = tuple(_engine.translate(o) for o in v[0])
+            if new == v[1]:
+                continue
+            try:
+                if self._as_tuple(real.call(path, "cget", "-values")) != v[1]:
+                    combo["values"] = None
+                    continue
+                shown = str(real.call(path, "get"))
+                real.call(path, "configure", "-values", new)
+                if shown in v[1]:
+                    real.call(path, "set", new[v[1].index(shown)])
+                combo["map"] = {d: o for o, d in zip(v[0], new)}
+                v[1] = new
+            except Exception:
+                self._combos.pop(path, None)
 
 
 # =====================================================================================

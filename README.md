@@ -115,23 +115,25 @@ translators translate the rest.
 
 ## What is translated
 
-Only **displayed** texts are translated:
+Every **displayed** text is translated:
 
 - the `text` option of widgets (Label, Button, Checkbutton, Radiobutton, LabelFrame…, Tk and ttk);
 - menu `label`s;
 - window titles;
-- `ttk.Notebook` tabs and `ttk.Treeview` column headings;
+- `ttk.Notebook` tabs, `ttk.Treeview` column headings **and rows** (item text and values);
+- `Listbox` items and `ttk.Combobox` lists (`values`);
 - `Canvas` texts;
 - variables (`StringVar`) displayed by a Label or a Button;
 - titles and messages of `messagebox` and of the file dialogs.
 
 The script always reads its texts back in their original language (`cget`, `StringVar.get`,
-`entrycget`, `title()`, `tab`, `heading`, `itemcget`). A comparison such as
-`if button.cget("text") == "Fermer"` therefore still works once the interface is translated.
+`entrycget`, `title()`, `tab`, `heading`, `itemcget`, `Treeview.item` / `set`, `Listbox.get`,
+`Combobox.get` and its variable). A comparison such as `if button.cget("text") == "Close"` or
+`if combo.get() == "All types"` therefore still works once the interface is translated.
 
-Never translated, because they are data: Treeview rows, Listbox, Entry, Text, Combobox values
-(`values`). Never sent to the engine: paths, file names, identifiers and codes (`WALL-01`), texts that
-are already valid in the output language.
+Never translated: what the user types (Entry, Text, free text of a Combobox). Never sent to the
+engine: paths, file names, identifiers and codes (`WALL-01`), numbers, texts that are already valid in
+the output language. A "/" between words ("Check / Element ID") is not taken for a path.
 
 ## Dictionaries
 
@@ -308,6 +310,7 @@ the conversion of old data. `uv` must be in the `PATH`.
 - v0.7.1 – v0.7.5: menu fixes (resource IDs below 32767, menu resources linked into the `.apx`, add-on
   kept loaded after a menu command, menus renamed at once when the tool language changes); Session
   Report lines copied to the log.
+- v0.10.0: Treeview rows, Listbox items and Combobox lists translated too; "/" between words no longer taken for a path.
 - v0.9.0: term corrections window (rules editor, suggestions from the cache, preview) instead of Notepad.
 - v0.8.0: the whole code base in English (identifiers, files, folders, messages, data names), with an
   automatic conversion of the data of older versions.

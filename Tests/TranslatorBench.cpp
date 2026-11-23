@@ -961,9 +961,17 @@ int main ()
 		Text (o, "tab", "Général", "General");
 		Text (o, "heading", "Nom", "Name");
 		Text (o, "canvas", "Plan", "Floor plan");
-		Text (o, "tree_row", "Walls", "Walls");			// data: never translated
-		Text (o, "combo", "Walls Slabs", "Walls");		// list values: never translated
+		// Lists (since 0.10.0): Treeview row text and values, Combobox values and variable,
+		// Listbox items are translated; the script reads back its originals.
+		Text (o, "tree_row", "Murs", "Walls");
+		Text (o, "tree_value", "Dalles", "Slabs");
+		Text (o, "tree_values", "Dalles", "Slabs");
+		Text (o, "combo", "Murs Dalles", "Walls");
+		Text (o, "combo_var", "Murs", "Walls");
+		Text (o, "listbox", "Murs Dalles", "Walls Slabs");
 		Text (o, "entry", "Walls", "Walls");				// user input: never translated
+		// "/" between words: not a path; no engine running, so it stays as is here.
+		Text (o, "slash", "Check / Element ID", "Check / Element ID");
 		// The script's own comparisons with its original texts still succeed.
 		Text (o, "logic", "ok");
 
@@ -1214,7 +1222,11 @@ int main ()
 			Text (o, "close", "Fermer", "Close");						// the dictionary wins
 			Text (o, "path", "C:\\Projects\\plan.pln", "C:\\Projects\\plan.pln");	// data: never sent
 			Text (o, "code", "WALL-01", "WALL-01");
-			Text (o, "tree_row", "Walls", "Walls");
+			Text (o, "tree_row", "Murs", "Walls");								// dictionary
+			// "/" between words is not a path: the label goes to the engine.
+			Check ("\"Check / Element ID\" sent to the engine (not taken for a path)",
+				   o.WaitFor (Shows ("slash", "[fr] Check / Element ID"), 5000));
+			Text (o, "slash", "[fr] Check / Element ID", "Check / Element ID");
 			Text (o, "logic", "ok");
 
 			// Step 3: the cache file of the "test" provider, English -> French, must hold the
