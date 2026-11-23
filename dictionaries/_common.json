@@ -1,5 +1,5 @@
 {
-  "_explanation": "Dictionnaire commun de Tapir Translator (domaine public, voir LICENSE). Une notion par ligne, une colonne par langue : chaque texte d'une langue se traduit dans la langue choisie, quelle que soit la langue du script. REMPLACE A CHAQUE VERSION DE L'ADD-ON : mettez vos ajouts dans _user.json. Un dictionnaire <script>.json l'emporte sur celui-ci. {n}, {nom}... = parties variables. Traductions a faire relire par des locuteurs natifs, en particulier hu.",
+  "_explanation": "Common dictionary of Tapir Translator (public domain, see LICENSE). One notion per row, one column per language: every text of one language is translated into the chosen language, whatever the language of the script. REPLACED WITH EVERY VERSION OF THE ADD-ON: put your additions in _user.json. A <script>.json dictionary overrides this one. {n}, {name}... = variable parts. Translations to be reviewed by native speakers, especially hu.",
   "format": 2,
   "languages": ["en", "fr", "de", "es", "pt", "it", "hu"],
   "terms": [

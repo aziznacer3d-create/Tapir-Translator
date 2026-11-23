@@ -14,7 +14,7 @@
 //     index : "hash\t<16 hex digits>\n" (the hash line), then one line per
 //             file: "<relative path>\t<start offset>\t<size>\n"
 //             (offsets are absolute positions in the .apx, sizes in bytes)
-//     footer: "TTCHARGE" (8 bytes) | index start (u64) | index size (u64) |
+//     footer: "TTPAYLOD" (8 bytes) | index start (u64) | index size (u64) |
 //             payload start (u64)        - all u64 are little-endian
 //
 //     The hash is a 64-bit FNV-1a over every relative path and file content.

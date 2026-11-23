@@ -208,9 +208,9 @@ QuotaAnswer AskMyMemoryEmail (std::string& email, bool withEmail, int language)
 	// Step 7: buttons aligned on the right - default button "Save" (or "OK"),
 	// then "Later" in the anonymous variant
 	const int lb = E (110), hb = E (30);
-	const std::wstring enregistrer = withEmail ? std::wstring (L"OK") : Wide (TT::Txt (TT::D_SAVE, language));
+	const std::wstring saveText = withEmail ? std::wstring (L"OK") : Wide (TT::Txt (TT::D_SAVE, language));
 	const std::wstring laterText = Wide (TT::Txt (TT::D_LATER, language));
-	HWND ok = CreateWindowExW (0, L"BUTTON", enregistrer.c_str (), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+	HWND ok = CreateWindowExW (0, L"BUTTON", saveText.c_str (), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
 							   width - E (16) - lb - (withEmail ? 0 : lb + E (10)), y, lb, hb, window,
 							   reinterpret_cast<HMENU> (static_cast<INT_PTR> (kSave)), instance, nullptr);
 	SendMessageW (ok, WM_SETFONT, reinterpret_cast<WPARAM> (status.font), TRUE);

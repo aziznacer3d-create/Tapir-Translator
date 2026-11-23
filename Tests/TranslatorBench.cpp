@@ -23,7 +23,7 @@
 //        engine (TapirTranslatorEngine.exe) can be tested end to end without
 //        network or real keys.
 //
-//   Scenarios (each prints its title, then one OK / ECHEC line per check):
+//   Scenarios (each prints its title, then one OK / FAILED line per check):
 //     [0]  payload (engine + model) appended at the end of the .apx: packing,
 //          reading, extraction, versioning by fingerprint;
 //     [1]  environment prepared by the add-on (layer, dictionaries, PYTHONPATH
@@ -43,7 +43,7 @@
 //     [6]  language of Tapir Translator itself (texts table, ArchiCAD language
 //          codes, settings, generated menus).
 //
-//   Output: one OK / ECHEC line per check, exit code 0 when everything passes.
+//   Output: one OK / FAILED line per check, exit code 0 when everything passes.
 //   Usage : TranslatorBench.exe   (uv must be in the PATH)
 // *****************************************************************************
 
@@ -76,7 +76,7 @@
 
 // BENCH_TESTS_DIR (UTF-8 path of the Tests folder) is defined by CMakeLists.txt.
 #if !defined (BENCH_TESTS_DIR)
-	#error "BANC_DOSSIER_TESTS doit etre defini (voir CMakeLists.txt)"
+	#error "BENCH_TESTS_DIR must be defined (see CMakeLists.txt)"
 #endif
 
 namespace {
@@ -85,7 +85,7 @@ namespace {
 int g_ok = 0;
 int g_failures = 0;
 
-// Records one check: prints "OK <name>" or "ECHEC <name> -> <detail>" and counts it.
+// Records one check: prints "OK <name>" or "FAILED <name> -> <detail>" and counts it.
 // The output is flushed at once so that the progress is visible even if the bench hangs.
 void Check (const std::string& name, bool condition, const std::string& detail = std::string ())
 {
@@ -94,7 +94,7 @@ void Check (const std::string& name, bool condition, const std::string& detail =
 		std::printf ("  OK     %s\n", name.c_str ());
 	} else {
 		++g_failures;
-		std::printf ("  ECHEC  %s%s%s\n", name.c_str (), detail.empty () ? "" : "  -> ", detail.c_str ());
+		std::printf ("  FAILED %s%s%s\n", name.c_str (), detail.empty () ? "" : "  -> ", detail.c_str ());
 	}
 	std::fflush (stdout);
 }
@@ -117,7 +117,7 @@ void Write (const std::wstring& path, const std::string& content)
 {
 	std::wstring error;
 	if (!TT::WriteWholeFile (path, content, error))
-		std::printf ("  (ecriture impossible : %s)\n", TT::Utf8 (error).c_str ());
+		std::printf ("  (cannot write: %s)\n", TT::Utf8 (error).c_str ());
 }
 
 // Recursively deletes a folder and everything in it (used to start each run from a clean
@@ -155,7 +155,7 @@ struct Value {
 
 // Drives one run of bench_tool.py:
 //   - starts it like the Tapir palette (uv run --script), stdout/stderr on a pipe;
-//   - a reader thread parses its output: each block of V| lines ended by FIN_ETAT
+//   - a reader thread parses its output: each block of V| lines ended by STATE_END
 //     becomes the current state (key -> Value), any other line is kept in others_;
 //   - commands are sent through <exchange folder>\command.txt ("upper", "end_").
 // The destructor kills the process if it is still running.
@@ -258,7 +258,7 @@ public:
 	// returns false.
 	bool Finish (DWORD& code, int ms)
 	{
-		Command ("fin");
+		Command ("end");
 		if (process_ == nullptr || WaitForSingleObject (process_, static_cast<DWORD> (ms)) != WAIT_OBJECT_0) {
 			Stop ();
 			return false;
@@ -300,7 +300,7 @@ private:
 	// Reader thread: splits the script output into lines (CR removed) and
 	//   - "V|<key>|<displayed>|<seen>" -> stored in a state being built (the seen part is
 	//     everything after the second '|');
-	//   - "FIN_ETAT"                   -> the state being built becomes the current state
+	//   - "STATE_END"                   -> the state being built becomes the current state
 	//     in one go, so a check never sees a half-written state;
 	//   - anything else                -> appended to others_.
 	// Ends when the pipe is closed (or the read is cancelled by Stop).
@@ -323,7 +323,7 @@ private:
 					const size_t b = a == std::string::npos ? a : line.find ('|', a + 1);
 					if (b != std::string::npos)
 						inProgress[line.substr (2, a - 2)] = Value { line.substr (a + 1, b - a - 1), line.substr (b + 1) };
-				} else if (line == "FIN_ETAT") {
+				} else if (line == "STATE_END") {
 					std::lock_guard<std::mutex> lock (m_);
 					status_ = inProgress;
 					inProgress.clear ();
@@ -353,13 +353,13 @@ private:
 void Text (Tool& o, const std::string& key, const std::string& displayed, const char* seen = nullptr)
 {
 	const Value v = o.Read (key);
-	Check (key + " affiche \"" + displayed + "\"", v.displayed == displayed, "affiche \"" + v.displayed + "\"");
+	Check (key + " displayed \"" + displayed + "\"", v.displayed == displayed, "displayed \"" + v.displayed + "\"");
 	if (seen != nullptr)
-		Check (key + " vu par le script \"" + seen + "\"", v.seen == seen, "vu \"" + v.seen + "\"");
+		Check (key + " seen by the script \"" + seen + "\"", v.seen == seen, "seen \"" + v.seen + "\"");
 }
 
 // Builds a condition for Tool::WaitFor: "the key is displayed with exactly this text".
-std::function<bool (const std::map<std::string, Value>&)> Affiche (const std::string& key, const std::string& text)
+std::function<bool (const std::map<std::string, Value>&)> Shows (const std::string& key, const std::string& text)
 {
 	return [key, text] (const std::map<std::string, Value>& e) {
 		auto it = e.find (key);
@@ -385,10 +385,10 @@ void Language (const std::wstring& root, const char* code, bool collect, const c
 	r.engine = engine;
 	r.provider = provider;
 	std::wstring error;
-	Check (std::string ("EcrireReglages entree=\"") + input + "\" sortie=\"" + code + "\"" + (engine ? " moteur" : ""),
+	Check (std::string ("WriteSettings input=\"") + input + "\" output=\"" + code + "\"" + (engine ? " engine" : ""),
 			  TT::WriteSettings (root, r, error), TT::Utf8 (error));
 	const TT::Settings reread = TT::ReadSettings (root);
-	Check ("LireReglages relit les reglages", reread.input == r.input && reread.language == r.language && reread.collect == r.collect &&
+	Check ("ReadSettings reads the settings back", reread.input == r.input && reread.language == r.language && reread.collect == r.collect &&
 			  reread.engine == r.engine && reread.provider == r.provider);
 }
 
@@ -700,12 +700,12 @@ std::string Prepare (const std::wstring& root)
 {
 	DeleteTree (root);
 	std::vector<std::wstring> journal;
-	Check ("ExtraireCouche", TT::ExtractLayer (root, journal));
-	Check ("couche\\sitecustomize.py ecrit", TT::FileExists (TT::Join (TT::Join (root, L"layer"), L"sitecustomize.py")));
-	Check ("dictionnaires\\_common.json ecrit", TT::FileExists (TT::Join (TT::Join (root, L"dictionaries"), L"_common.json")));
-	Check ("dictionnaires\\_user.json cree", TT::FileExists (TT::Join (TT::Join (root, L"dictionaries"), L"_user.json")));
+	Check ("ExtractLayer", TT::ExtractLayer (root, journal));
+	Check ("layer\\sitecustomize.py written", TT::FileExists (TT::Join (TT::Join (root, L"layer"), L"sitecustomize.py")));
+	Check ("dictionaries\\_common.json written", TT::FileExists (TT::Join (TT::Join (root, L"dictionaries"), L"_common.json")));
+	Check ("dictionaries\\_user.json created", TT::FileExists (TT::Join (TT::Join (root, L"dictionaries"), L"_user.json")));
 	// An old (modified) _common.json is replaced by the one of this version; _user.json is kept
-	Write (TT::Join (TT::Join (root, L"dictionaries"), L"_common.json"), "{\"ancien\": true}");
+	Write (TT::Join (TT::Join (root, L"dictionaries"), L"_common.json"), "{\"old\": true}");
 	Write (TT::Join (TT::Join (root, L"dictionaries"), L"_user.json"), "{\"format\": 2, \"terms\": []}");
 	{
 		std::vector<std::wstring> j2;
@@ -713,8 +713,8 @@ std::string Prepare (const std::wstring& root)
 		std::string c, p;
 		TT::ReadWholeFile (TT::Join (TT::Join (root, L"dictionaries"), L"_common.json"), c);
 		TT::ReadWholeFile (TT::Join (TT::Join (root, L"dictionaries"), L"_user.json"), p);
-		Check ("ancien _common.json remplace par celui de la version", c.find ("\"terms\"") != std::string::npos);
-		Check ("_user.json de l'utilisateur garde", p == "{\"format\": 2, \"terms\": []}");
+		Check ("old _common.json replaced by the one of this version", c.find ("\"terms\"") != std::string::npos);
+		Check ("user's _user.json kept", p == "{\"format\": 2, \"terms\": []}");
 	}
 	std::string dictionary;
 	TT::ReadWholeFile (TT::Join (TT::Join (TestsFolder (), L"data"), L"bench_tool.json"), dictionary);
@@ -738,7 +738,7 @@ int main ()
 	GetTempPathW (MAX_PATH, temp);
 	const std::wstring root = TT::Join (temp, L"TapirTranslatorBench_" + std::to_wstring (GetCurrentProcessId ()));
 	const std::wstring script = TT::Join (TestsFolder (), L"bench_tool.py");
-	std::printf ("Tapir Translator %s - banc de test\n  dossier : %s\n  script  : %s\n\n", TT::AddOnVersion,
+	std::printf ("Tapir Translator %s - test bench\n  folder : %s\n  script : %s\n\n", TT::AddOnVersion,
 				 TT::Utf8 (root).c_str (), TT::Utf8 (script).c_str ());
 
 	// --- [0] payload embedded at the end of the .apx (TT_Payload) ---------------------------
@@ -755,63 +755,63 @@ int main ()
 	//   5. a file without payload is rejected;
 	//   6. finally, the real Tapir_Translator.apx built next to the bench must contain the
 	//      engine.
-	std::printf ("[0] Moteur et modele embarques dans le .apx\n");
+	std::printf ("[0] Engine and model embedded in the .apx\n");
 	{
-		const std::wstring folder = TT::Join (temp, L"TapirTranslatorCharge_" + std::to_wstring (GetCurrentProcessId ()));
+		const std::wstring folder = TT::Join (temp, L"TapirTranslatorPayload_" + std::to_wstring (GetCurrentProcessId ()));
 		DeleteTree (folder);
 		const std::wstring source = TT::Join (folder, L"source");
-		TT::CreateFolder (TT::Join (source, L"modele\\sous"));
+		TT::CreateFolder (TT::Join (source, L"model\\sub"));
 		std::string big (3 * 1024 * 1024 + 17, '\0');		// larger than the copy buffer (1 MB)
 		for (size_t i = 0; i < big.size (); ++i)
 			big[i] = static_cast<char> ((i * 31 + 7) & 0xFF);
-		Write (TT::Join (source, L"engine.exe"), "MZ faux moteur");
-		Write (TT::Join (source, L"modele\\poids.bin"), big);
-		Write (TT::Join (source, L"modele\\sous\\vocabulaire é.txt"), "mur\nwall\n");
+		Write (TT::Join (source, L"engine.exe"), "MZ fake engine");
+		Write (TT::Join (source, L"model\\weights.bin"), big);
+		Write (TT::Join (source, L"model\\sub\\vocabulary é.txt"), "mur\nwall\n");
 		// Fake .apx: stands for the DLL produced by the linker.
-		const std::wstring apx = TT::Join (folder, L"faux.apx");
-		const std::string apxContent = "faux contenu de DLL";
+		const std::wstring apx = TT::Join (folder, L"fake.apx");
+		const std::string apxContent = "fake DLL content";
 		Write (apx, apxContent);
 
 		// Step 2: pack twice; the second pass must replace the first payload, so the file
 		// size stays about DLL + payload (one copy of the big file, not two).
 		std::wstring hash, hash2;
 		std::vector<std::wstring> journal;
-		Check ("Empaqueter", TT::Packer (apx, source, hash, journal));
-		Check ("Empaqueter une seconde fois (ancienne charge retiree)", TT::Packer (apx, source, hash2, journal));
-		Check ("meme contenu = meme empreinte", hash == hash2 && !hash.empty ());
+		Check ("Pack", TT::Packer (apx, source, hash, journal));
+		Check ("Pack a second time (old payload removed)", TT::Packer (apx, source, hash2, journal));
+		Check ("same content = same fingerprint", hash == hash2 && !hash.empty ());
 		std::string apxRead;
 		TT::ReadWholeFile (apx, apxRead);
-		Check ("le debut du .apx est intact", apxRead.compare (0, apxContent.size (), apxContent) == 0);
-		Check ("une seule charge apres deux passages", apxRead.size () < apxContent.size () + big.size () + 2000,
+		Check ("start of the .apx is intact", apxRead.compare (0, apxContent.size (), apxContent) == 0);
+		Check ("a single payload after two passes", apxRead.size () < apxContent.size () + big.size () + 2000,
 				  std::to_string (apxRead.size ()));
 		// Step 3: payload table (3 files, same fingerprint), then extraction into
 		// <base>\<fingerprint> and byte-for-byte comparison of the files.
 		std::wstring e;
 		std::vector<std::wstring> paths;
-		Check ("LireCharge : 3 fichiers", TT::ReadPayload (apx, e, paths) && paths.size () == 3 && e == hash);
+		Check ("ReadPayload: 3 files", TT::ReadPayload (apx, e, paths) && paths.size () == 3 && e == hash);
 
 		std::wstring extracted;
 		const std::wstring base = TT::Join (folder, L"extracted");
-		Check ("ExtraireCharge", TT::ExtractPayload (apx, base, extracted, journal));
-		Check ("dossier d'extraction = empreinte", extracted == TT::Join (base, hash), TT::Utf8 (extracted));
+		Check ("ExtractPayload", TT::ExtractPayload (apx, base, extracted, journal));
+		Check ("extraction folder = fingerprint", extracted == TT::Join (base, hash), TT::Utf8 (extracted));
 		std::string read_;
-		Check ("gros fichier identique", TT::ReadWholeFile (TT::Join (extracted, L"modele\\poids.bin"), read_) && read_ == big);
-		Check ("fichier a accent identique", TT::ReadWholeFile (TT::Join (extracted, L"modele\\sous\\vocabulaire é.txt"), read_) && read_ == "mur\nwall\n");
+		Check ("large file identical", TT::ReadWholeFile (TT::Join (extracted, L"model\\weights.bin"), read_) && read_ == big);
+		Check ("accented file identical", TT::ReadWholeFile (TT::Join (extracted, L"model\\sub\\vocabulary é.txt"), read_) && read_ == "mur\nwall\n");
 		// A second extraction of the same version must succeed and end its log with
 		// "already extracted" (nothing copied again).
 		journal.clear ();
-		Check ("deuxieme extraction : rien a refaire", TT::ExtractPayload (apx, base, extracted, journal) &&
-				  !journal.empty () && journal.back ().find (L"deja extrait") != std::wstring::npos);
+		Check ("second extraction: nothing to redo", TT::ExtractPayload (apx, base, extracted, journal) &&
+				  !journal.empty () && journal.back ().find (L"already extracted") != std::wstring::npos);
 
 		// Steps 4 and 5: a modified engine gives a new fingerprint and a new extraction
 		// folder; a file without payload (here the fake engine itself) is rejected.
-		Write (TT::Join (source, L"engine.exe"), "MZ faux moteur v2");
+		Write (TT::Join (source, L"engine.exe"), "MZ fake engine v2");
 		std::wstring hash3;
 		TT::Packer (apx, source, hash3, journal);
-		Check ("nouvelle version = nouvelle empreinte", hash3 != hash);
-		Check ("nouvelle version extraite a cote", TT::ExtractPayload (apx, base, extracted, journal) &&
-				  TT::ReadWholeFile (TT::Join (extracted, L"engine.exe"), read_) && read_ == "MZ faux moteur v2");
-		Check ("fichier sans charge refuse", !TT::ReadPayload (TT::Join (source, L"engine.exe"), e, paths));
+		Check ("new version = new fingerprint", hash3 != hash);
+		Check ("new version extracted alongside", TT::ExtractPayload (apx, base, extracted, journal) &&
+				  TT::ReadWholeFile (TT::Join (extracted, L"engine.exe"), read_) && read_ == "MZ fake engine v2");
+		Check ("file without payload rejected", !TT::ReadPayload (TT::Join (source, L"engine.exe"), e, paths));
 
 		// Step 6: the real .apx produced by the build (same folder as the bench) must carry
 		// TapirTranslatorEngine.exe in its payload.
@@ -825,8 +825,63 @@ int main ()
 			for (const std::wstring& c : paths)
 				engineInside = engineInside || c == L"TapirTranslatorEngine.exe";
 		}
-		Check ("Tapir_Translator.apx contient TapirTranslatorEngine.exe", engineInside);
+		Check ("Tapir_Translator.apx contains TapirTranslatorEngine.exe", engineInside);
 		DeleteTree (folder);
+	}
+
+	// --- [0b] conversion of the data of versions <= 0.7.5 (TT::MigrateOldData) -----------------
+	//   Old French names and keys must become the current ones, once, without losing the user's
+	//   keys, settings, corrections, dictionaries and cache; a second pass changes nothing.
+	std::printf ("\n[0b] Conversion of the data of versions <= 0.7.5\n");
+	{
+		const std::wstring old = TT::Join (temp, L"TapirTranslatorMigration_" + std::to_wstring (GetCurrentProcessId ()));
+		DeleteTree (old);
+		// Step 1: data as written by version 0.7.5.
+		TT::CreateFolder (TT::Join (old, L"dictionnaires"));
+		TT::CreateFolder (TT::Join (old, L"manquants"));
+		TT::CreateFolder (TT::Join (TT::Join (old, L"cache"), L"mymemory"));
+		TT::CreateFolder (TT::Join (old, L"couche"));
+		Write (TT::Join (old, L"reglages.json"), "{\n  \"entree\": \"\",\n  \"langue\": \"de\",\n  \"collecte\": true,\n  \"moteur\": true,\n"
+												 "  \"fournisseur\": \"deepl\",\n  \"interface\": \"en\",\n  \"ecrit_par\": \"Tapir Translator 0.7.5\"\n}\n");
+		Write (TT::Join (old, L"cles.json"), "{\"_explication\": \"x\", \"deepl\": {\"_ou\": \"y\", \"cle\": \"secret:fx\"}}");
+		Write (TT::Join (old, L"corrections.json"), "{\"fr\": [{\"source\": \"story\", \"mauvais\": \"histoire\", \"correct\": \"étage\"}]}");
+		Write (TT::Join (TT::Join (old, L"dictionnaires"), L"_perso.json"), "{\"format\": 2, \"langues\": [\"fr\"], \"termes\": []}");
+		Write (TT::Join (TT::Join (old, L"dictionnaires"), L"outil.json"), "{\"langue_source\": \"fr\", \"traductions\": {\"en\": {\"Fermer\": \"Close\"}}}");
+		Write (TT::Join (TT::Join (old, L"manquants"), L"outil.json"), "{\"langue_source\": \"en\", \"traductions\": {\"fr\": {\"Close\": \"\"}}}");
+		Write (TT::Join (TT::Join (TT::Join (old, L"cache"), L"mymemory"), L"en-fr.json"),
+			   "{\"cible\": \"fr\", \"fournisseur\": \"mymemory\", \"source\": \"en\", \"traductions\": {\"Close\": \"Fermer\"}}");
+		Write (TT::Join (old, L"journal.txt"), "old log line\n");
+		Write (TT::Join (TT::Join (old, L"couche"), L"sitecustomize.py"), "# old layer\n");
+		// Step 2: conversion, then the settings must read back as written by 0.7.5.
+		std::vector<std::wstring> journal;
+		TT::MigrateOldData (old, journal);
+		const TT::Settings s = TT::ReadSettings (old);
+		Check ("old settings read back (output de, deepl, online, collect, interface en)",
+			   s.language == "de" && s.provider == "deepl" && s.engine && s.collect && s.interface == "en");
+		std::string c;
+		Check ("cles.json -> keys.json, key kept", !TT::FileExists (TT::Join (old, L"cles.json")) &&
+			   TT::ReadWholeFile (TT::Join (old, L"keys.json"), c) && c.find ("\"key\": \"secret:fx\"") != std::string::npos &&
+			   c.find ("\"_where\"") != std::string::npos && c.find ("\"_explanation\"") != std::string::npos, c);
+		Check ("corrections.json keys converted", TT::ReadWholeFile (TT::Join (old, L"corrections.json"), c) &&
+			   c.find ("\"wrong\": \"histoire\"") != std::string::npos, c);
+		Check ("dictionnaires -> dictionaries, _perso.json -> _user.json",
+			   TT::ReadWholeFile (TT::Join (TT::Join (old, L"dictionaries"), L"_user.json"), c) &&
+			   c.find ("\"terms\"") != std::string::npos && c.find ("\"languages\"") != std::string::npos, c);
+		Check ("script dictionary converted", TT::ReadWholeFile (TT::Join (TT::Join (old, L"dictionaries"), L"outil.json"), c) &&
+			   c.find ("\"source_language\"") != std::string::npos && c.find ("\"translations\"") != std::string::npos, c);
+		Check ("manquants -> missing", TT::ReadWholeFile (TT::Join (TT::Join (old, L"missing"), L"outil.json"), c) &&
+			   c.find ("\"translations\"") != std::string::npos, c);
+		Check ("cache converted, translation kept",
+			   TT::ReadWholeFile (TT::Join (TT::Join (TT::Join (old, L"cache"), L"mymemory"), L"en-fr.json"), c) &&
+			   c.find ("\"target\": \"fr\"") != std::string::npos && c.find ("\"provider\"") != std::string::npos &&
+			   c.find ("\"Close\": \"Fermer\"") != std::string::npos, c);
+		Check ("journal.txt -> log.txt", TT::ReadWholeFile (TT::Join (old, L"log.txt"), c) && c == "old log line\n");
+		Check ("old layer folder deleted", !TT::FolderExists (TT::Join (old, L"couche")));
+		// Step 3: a second pass must find nothing left to convert.
+		std::vector<std::wstring> again;
+		TT::MigrateOldData (old, again);
+		Check ("second pass: nothing to convert", again.empty (), std::to_string (again.size ()));
+		DeleteTree (old);
 	}
 
 	// --- [1] environment, like the add-on's Initialize () --------------------------------
@@ -838,7 +893,7 @@ int main ()
 	//   4. the variables Tapir / the bench give the script: TAPIR_SCRIPT_ID (marks a Tapir
 	//      script, without it the layer does nothing), UTF-8 output, BENCH_EXCHANGE;
 	//   5. initial settings: no translation (original language), collection enabled.
-	std::printf ("\n[1] Environnement prepare par l'add-on\n");
+	std::printf ("\n[1] Environment prepared by the add-on\n");
 	std::string dictionary = Prepare (root);
 	// An existing PYTHONPATH (with its own sitecustomize) must be kept and chained
 	const std::wstring other = TT::Join (root, L"other_path");
@@ -846,16 +901,16 @@ int main ()
 	Write (TT::Join (other, L"sitecustomize.py"), "print('NEXT|ok', flush=True)\n");
 	SetEnvironmentVariableW (L"PYTHONPATH", other.c_str ());
 	std::wstring pythonPath;
-	Check ("PreparerEnvironnement", TT::PrepareEnvironment (root, pythonPath));
-	Check ("PYTHONPATH = couche;ancien", pythonPath == TT::Join (root, L"layer") + L";" + other, TT::Utf8 (pythonPath));
+	Check ("PrepareEnvironment", TT::PrepareEnvironment (root, pythonPath));
+	Check ("PYTHONPATH = layer;previous", pythonPath == TT::Join (root, L"layer") + L";" + other, TT::Utf8 (pythonPath));
 	std::wstring again;
 	TT::PrepareEnvironment (root, again);
-	Check ("PreparerEnvironnement idempotent", again == pythonPath, TT::Utf8 (again));
-	SetEnvironmentVariableW (L"TAPIR_SCRIPT_ID", L"tapir-banc-1");
+	Check ("PrepareEnvironment idempotent", again == pythonPath, TT::Utf8 (again));
+	SetEnvironmentVariableW (L"TAPIR_SCRIPT_ID", L"tapir-bench-1");
 	SetEnvironmentVariableW (L"PYTHONIOENCODING", L"utf-8");
 	SetEnvironmentVariableW (L"BENCH_EXCHANGE", root.c_str ());
 	Language (root, "", true);
-	Check ("LireReglages relit la langue d'origine + collecte", TT::ReadSettings (root).language.empty () && TT::ReadSettings (root).collect);
+	Check ("ReadSettings reads back the original language + collection", TT::ReadSettings (root).language.empty () && TT::ReadSettings (root).collect);
 
 	// --- [2] main scenario: opened in its original language, then translated live ---------
 	// The script uses its own dictionary (dictionaries\bench_tool.json) plus the common one.
@@ -869,52 +924,52 @@ int main ()
 	//   6. German, back to the original language, "fr" (= source, nothing to do), English
 	//      again: several live switches in a row;
 	//   7. clean exit, no Python traceback.
-	std::printf ("\n[2] Script ouvert sans traduction puis traduit en direct\n");
+	std::printf ("\n[2] Script opened untranslated, then translated live\n");
 	{
 		// Step 1: launch. The first "uv run" may have to prepare its environment, hence 30 s.
 		Tool o;
-		Check ("lancement uv run --script", o.Launch (script, root));
-		Check ("couche chargee par Python (sitecustomize)", o.WaitForLine ("LAYER|active", 30000));
-		Check ("sitecustomize existant chaine", o.WaitForLine ("NEXT|ok", 2000));
-		Check ("premier etat recu", o.WaitFor (Affiche ("titre", "Outil de démonstration"), 10000));
-		Text (o, "fermer", "Fermer", "Fermer");
-		Text (o, "statut", "Prêt", "Prêt");
+		Check ("launch uv run --script", o.Launch (script, root));
+		Check ("layer loaded by Python (sitecustomize)", o.WaitForLine ("LAYER|active", 30000));
+		Check ("existing sitecustomize chained", o.WaitForLine ("NEXT|ok", 2000));
+		Check ("first state received", o.WaitFor (Shows ("title", "Outil de démonstration"), 10000));
+		Text (o, "close", "Fermer", "Fermer");
+		Text (o, "status", "Prêt", "Prêt");
 
 		// Step 2: English output (collection still on). Each Text checks the displayed
 		// translation AND the original text still returned to the script.
 		Language (root, "en", true);
-		Check ("bascule en anglais en direct (< 5 s)", o.WaitFor (Affiche ("titre", "Demo tool"), 5000));
-		Text (o, "titre", "Demo tool", "Outil de démonstration");
-		Text (o, "statut", "Ready", "Prêt");
-		Text (o, "fermer", "Close", "Fermer");
-		Text (o, "nom", "Name:", "Nom :");
-		Text (o, "murs", "Walls", "Murs");
-		Text (o, "cadre", "Options", "Options");
+		Check ("live switch to English (< 5 s)", o.WaitFor (Shows ("title", "Demo tool"), 5000));
+		Text (o, "title", "Demo tool", "Outil de démonstration");
+		Text (o, "status", "Ready", "Prêt");
+		Text (o, "close", "Close", "Fermer");
+		Text (o, "name", "Name:", "Nom :");
+		Text (o, "walls", "Walls", "Murs");
+		Text (o, "frame", "Options", "Options");
 		// Multi-line text (newlines escaped by the script), "{n}" pattern, and a text found
 		// in no dictionary (no engine running: it stays as is).
 		Text (o, "multi", "First line\\nSecond line", "Première ligne\\nDeuxième ligne");
-		Text (o, "modele", "3 walls created", "3 murs créés");
-		Text (o, "inconnu", "Texte inconnu", "Texte inconnu");
+		Text (o, "pattern", "3 walls created", "3 murs créés");
+		Text (o, "unknown", "Texte inconnu", "Texte inconnu");
 		// Menus, notebook tab, Treeview heading, Canvas text.
-		Text (o, "menu_fichier", "File", "Fichier");
-		Text (o, "menu_ouvrir", "Open...", "Ouvrir...");
-		Text (o, "menu_quitter", "Quit", "Quitter");
-		Text (o, "onglet", "General", "Général");
-		Text (o, "entete", "Name", "Nom");
-		Text (o, "canevas", "Floor plan", "Plan");
-		Text (o, "ligne_arbre", "Murs", "Murs");			// data: never translated
+		Text (o, "menu_file", "File", "Fichier");
+		Text (o, "menu_open", "Open...", "Ouvrir...");
+		Text (o, "menu_quit", "Quit", "Quitter");
+		Text (o, "tab", "General", "Général");
+		Text (o, "heading", "Name", "Nom");
+		Text (o, "canvas", "Floor plan", "Plan");
+		Text (o, "tree_row", "Murs", "Murs");			// data: never translated
 		Text (o, "combo", "Murs Dalles", "Murs");			// list values: never translated
-		Text (o, "saisie", "Murs", "Murs");				// user input: never translated
+		Text (o, "entry", "Murs", "Murs");				// user input: never translated
 		// The script's own comparisons with its original texts still succeed.
-		Text (o, "logique", "ok");
+		Text (o, "logic", "ok");
 
 		// Step 3: the script sets new texts itself while the interface is translated; they
 		// must be translated too, and the script must still read its own French values.
-		o.Command ("maj");
-		Check ("le script change son statut pendant la traduction", o.WaitFor (Affiche ("statut", "Done"), 3000));
-		Text (o, "statut", "Done", "Terminé");
-		Text (o, "nom", "Value", "Valeur");
-		Text (o, "logique", "ok");
+		o.Command ("update");
+		Check ("script changes its status while translated", o.WaitFor (Shows ("status", "Done"), 3000));
+		Text (o, "status", "Done", "Terminé");
+		Text (o, "name", "Value", "Valeur");
+		Text (o, "logic", "ok");
 
 		// Step 4: with collection on, "Text unknown" must be written (with an empty
 		// translation) into missing\bench_tool.json; polled for up to about 4 s.
@@ -926,61 +981,61 @@ int main ()
 			if (!note)
 				Sleep (100);
 		}
-		Check ("texte non traduit note dans manquants\\bench_tool.json", note);
+		Check ("untranslated text noted in missing\\bench_tool.json", note);
 
 		// Step 5: dictionary completed while the tool is running: the entry
 		// "Text unknown" -> "Unknown text" is inserted after "Plan" in the script's
 		// dictionary file, and the open window must pick it up by itself.
 		const std::string key = "\"Plan\": \"Floor plan\"";
 		const size_t pos = dictionary.find (key);
-		Check ("dictionnaire du banc lisible", pos != std::string::npos);
+		Check ("bench dictionary readable", pos != std::string::npos);
 		if (pos != std::string::npos) {
 			dictionary.insert (pos + key.size (), ",\n      \"Texte inconnu\": \"Unknown text\"");
 			Write (TT::Join (TT::Join (root, L"dictionaries"), L"bench_tool.json"), dictionary);
 		}
-		Check ("dictionnaire modifie applique en direct", o.WaitFor (Affiche ("inconnu", "Unknown text"), 5000));
-		Text (o, "inconnu", "Unknown text", "Texte inconnu");
+		Check ("modified dictionary applied live", o.WaitFor (Shows ("unknown", "Unknown text"), 5000));
+		Text (o, "unknown", "Unknown text", "Texte inconnu");
 
 		// Step 6a: German (collection off). "Text unknown" has no German entry: original.
 		Language (root, "de", false);
-		Check ("bascule en allemand", o.WaitFor (Affiche ("titre", "Demo-Werkzeug"), 5000));
-		Text (o, "fermer", "Schließen", "Fermer");
-		Text (o, "modele", "3 Wände erstellt", "3 murs créés");
-		Text (o, "murs", "Wände", "Murs");
-		Text (o, "statut", "Fertig", "Terminé");
-		Text (o, "nom", "Wert", "Valeur");					// common multilingual dictionary
-		Text (o, "inconnu", "Texte inconnu", "Texte inconnu");
+		Check ("switch to German", o.WaitFor (Shows ("title", "Demo-Werkzeug"), 5000));
+		Text (o, "close", "Schließen", "Fermer");
+		Text (o, "pattern", "3 Wände erstellt", "3 murs créés");
+		Text (o, "walls", "Wände", "Murs");
+		Text (o, "status", "Fertig", "Terminé");
+		Text (o, "name", "Wert", "Valeur");					// common multilingual dictionary
+		Text (o, "unknown", "Texte inconnu", "Texte inconnu");
 
 		// Step 6b: output language "" = no translation: every original text comes back.
 		Language (root, "", false);
-		Check ("retour a la langue d'original", o.WaitFor (Affiche ("titre", "Outil de démonstration"), 5000));
-		Text (o, "fermer", "Fermer", "Fermer");
-		Text (o, "statut", "Terminé", "Terminé");
-		Text (o, "modele", "3 murs créés", "3 murs créés");
-		Text (o, "menu_ouvrir", "Ouvrir...", "Ouvrir...");
-		Text (o, "canevas", "Plan", "Plan");
+		Check ("back to the original language", o.WaitFor (Shows ("title", "Outil de démonstration"), 5000));
+		Text (o, "close", "Fermer", "Fermer");
+		Text (o, "status", "Terminé", "Terminé");
+		Text (o, "pattern", "3 murs créés", "3 murs créés");
+		Text (o, "menu_open", "Ouvrir...", "Ouvrir...");
+		Text (o, "canvas", "Plan", "Plan");
 
 		// Step 6c: output = French, the script's own language: nothing must change (no
 		// state change to wait for, hence a fixed delay before the check).
 		Language (root, "fr", false);
 		Sleep (1500);
-		Text (o, "titre", "Outil de démonstration");		// fr = source language: nothing to do
+		Text (o, "title", "Outil de démonstration");		// fr = source language: nothing to do
 
 		// Step 6d: English again after all these switches.
 		Language (root, "en", false);
-		Check ("de nouveau en anglais apres plusieurs bascules", o.WaitFor (Affiche ("titre", "Demo tool"), 5000));
-		Text (o, "menu_quitter", "Quit", "Quitter");
-		Text (o, "onglet", "General", "Général");
-		Text (o, "logique", "ok");
+		Check ("English again after several switches", o.WaitFor (Shows ("title", "Demo tool"), 5000));
+		Text (o, "menu_quit", "Quit", "Quitter");
+		Text (o, "tab", "General", "Général");
+		Text (o, "logic", "ok");
 
 		// Step 7: the script exits by itself with code 0 and printed no Python traceback
 		// (the layer must never break the script). On failure, show its output.
 		DWORD code = 1;
-		Check ("fermeture propre du script", o.Finish (code, 10000) && code == 0, "code " + std::to_string (code));
+		Check ("clean exit of the script", o.Finish (code, 10000) && code == 0, "code " + std::to_string (code));
 		bool trace = false;
 		for (const std::string& l : o.Others ())
 			trace = trace || l.find ("Traceback") != std::string::npos;
-		Check ("aucune erreur Python", !trace);
+		Check ("no Python error", !trace);
 		if (g_failures > 0)
 			ShowOutput (o);
 	}
@@ -988,19 +1043,19 @@ int main ()
 	// --- [3] script launched while a language is already chosen ----------------------------
 	// The settings left by [2] say English: widgets must be translated as soon as they are
 	// created (no switch involved), and the script logic must still work.
-	std::printf ("\n[3] Script lance avec l'anglais deja choisi (traduction a la creation)\n");
+	std::printf ("\n[3] Script launched with English already chosen (translated at creation)\n");
 	{
 		Tool o;
-		Check ("lancement", o.Launch (script, root));
-		Check ("interface creee directement en anglais", o.WaitFor (Affiche ("titre", "Demo tool"), 30000));
-		Text (o, "fermer", "Close", "Fermer");
-		Text (o, "statut", "Ready", "Prêt");
-		Text (o, "menu_ouvrir", "Open...", "Ouvrir...");
-		Text (o, "entete", "Name", "Nom");
-		Text (o, "canevas", "Floor plan", "Plan");
-		Text (o, "logique", "ok");
+		Check ("launch", o.Launch (script, root));
+		Check ("interface created directly in English", o.WaitFor (Shows ("title", "Demo tool"), 30000));
+		Text (o, "close", "Close", "Fermer");
+		Text (o, "status", "Ready", "Prêt");
+		Text (o, "menu_open", "Open...", "Ouvrir...");
+		Text (o, "heading", "Name", "Nom");
+		Text (o, "canvas", "Floor plan", "Plan");
+		Text (o, "logic", "ok");
 		DWORD code = 1;
-		Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+		Check ("clean exit", o.Finish (code, 10000) && code == 0);
 	}
 
 	// --- [3b] common dictionary only (script without a dictionary), several languages -------
@@ -1011,36 +1066,36 @@ int main ()
 	//   2. Polish is an ArchiCAD language without a column in the common dictionary: with
 	//      the engine disabled the original text must stay;
 	//   3. Spanish and Italian, then the script logic is still intact.
-	std::printf ("\n[3b] Script sans dictionnaire : dictionnaire commun multilingue\n");
+	std::printf ("\n[3b] Script without a dictionary: common multilingual dictionary\n");
 	{
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_TOOL", L"script_no_dictionary");
 		Language (root, "pt", false);
 		Tool o;
-		Check ("lancement", o.Launch (script, root));
-		Check ("portugais", o.WaitFor (Affiche ("fermer", "Fechar"), 30000));
-		Text (o, "murs", "Paredes", "Murs");
-		Text (o, "nom", "Nome:", "Nom :");
-		Text (o, "statut", "Pronto", "Prêt");
-		Text (o, "menu_fichier", "Ficheiro", "Fichier");
-		Text (o, "titre", "Outil de démonstration");		// script-specific: not in the common dictionary
+		Check ("launch", o.Launch (script, root));
+		Check ("Portuguese", o.WaitFor (Shows ("close", "Fechar"), 30000));
+		Text (o, "walls", "Paredes", "Murs");
+		Text (o, "name", "Nome:", "Nom :");
+		Text (o, "status", "Pronto", "Prêt");
+		Text (o, "menu_file", "Ficheiro", "Fichier");
+		Text (o, "title", "Outil de démonstration");		// script-specific: not in the common dictionary
 		Language (root, "hu", false);
-		Check ("hongrois", o.WaitFor (Affiche ("fermer", "Bezárás"), 5000));
-		Text (o, "murs", "Falak", "Murs");
-		Text (o, "menu_quitter", "Kilépés", "Quitter");
-		Text (o, "onglet", "Általános", "Général");
+		Check ("Hungarian", o.WaitFor (Shows ("close", "Bezárás"), 5000));
+		Text (o, "walls", "Falak", "Murs");
+		Text (o, "menu_quit", "Kilépés", "Quitter");
+		Text (o, "tab", "Általános", "Général");
 		// Polish: an ArchiCAD language without a column in the common dictionary, engine
 		// disabled -> the original text stays (only the engine would translate it)
 		Language (root, "pl", false);
-		Check ("polonais sans colonne de dictionnaire : texte d'original", o.WaitFor (Affiche ("fermer", "Fermer"), 5000));
-		Text (o, "murs", "Murs", "Murs");
+		Check ("Polish without a dictionary column: original text", o.WaitFor (Shows ("close", "Fermer"), 5000));
+		Text (o, "walls", "Murs", "Murs");
 		Language (root, "es", false);
-		Check ("espagnol", o.WaitFor (Affiche ("fermer", "Cerrar"), 5000));
-		Text (o, "murs", "Muros", "Murs");
+		Check ("Spanish", o.WaitFor (Shows ("close", "Cerrar"), 5000));
+		Text (o, "walls", "Muros", "Murs");
 		Language (root, "it", false);
-		Check ("italien", o.WaitFor (Affiche ("fermer", "Chiudi"), 5000));
-		Text (o, "logique", "ok");
+		Check ("Italian", o.WaitFor (Shows ("close", "Chiudi"), 5000));
+		Text (o, "logic", "ok");
 		DWORD code = 1;
-		Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+		Check ("clean exit", o.Finish (code, 10000) && code == 0);
 	}
 
 	// --- [3c] script written in English, source language not declared ---------------------
@@ -1052,44 +1107,44 @@ int main ()
 	//      (de) on an English script finds nothing to translate; input = output (en -> en)
 	//      translates nothing;
 	//   3. clean up the variables and go back to English output for the next scenarios.
-	std::printf ("\n[3c] Script ecrit en anglais (langue non declaree)\n");
+	std::printf ("\n[3c] Script written in English (language not declared)\n");
 	{
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_TOOL", L"script_english");
 		SetEnvironmentVariableW (L"BENCH_UI", L"en");
 		Language (root, "fr", false);
 		Tool o;
-		Check ("lancement", o.Launch (script, root));
-		Check ("anglais -> francais", o.WaitFor (Affiche ("fermer", "Fermer"), 30000));
-		Text (o, "fermer", "Fermer", "Close");
-		Text (o, "nom", "Nom :", "Name:");				// French typography (space before ':')
-		Text (o, "murs", "Murs", "Walls");
-		Text (o, "statut", "Prêt", "Ready");
-		Text (o, "menu_quitter", "Quitter", "Quit");
+		Check ("launch", o.Launch (script, root));
+		Check ("English -> French", o.WaitFor (Shows ("close", "Fermer"), 30000));
+		Text (o, "close", "Fermer", "Close");
+		Text (o, "name", "Nom :", "Name:");				// French typography (space before ':')
+		Text (o, "walls", "Murs", "Walls");
+		Text (o, "status", "Prêt", "Ready");
+		Text (o, "menu_quit", "Quitter", "Quit");
 		Language (root, "en", false);
-		Check ("anglais -> anglais : rien ne change", o.WaitFor (Affiche ("fermer", "Close"), 5000));
-		Text (o, "murs", "Walls", "Walls");
+		Check ("English -> English: nothing changes", o.WaitFor (Shows ("close", "Close"), 5000));
+		Text (o, "walls", "Walls", "Walls");
 		Language (root, "de", false);
-		Check ("anglais -> allemand", o.WaitFor (Affiche ("fermer", "Schließen"), 5000));
-		Text (o, "nom", "Name:", "Name:");
-		Text (o, "logique", "ok");
+		Check ("English -> German", o.WaitFor (Shows ("close", "Schließen"), 5000));
+		Text (o, "name", "Name:", "Name:");
+		Text (o, "logic", "ok");
 
 		// Step 2: input language chosen in the menu (4th argument of Language)
 		Language (root, "fr", false, "en");
-		Check ("entree anglais -> sortie francais", o.WaitFor (Affiche ("fermer", "Fermer"), 5000));
-		Text (o, "murs", "Murs", "Walls");
-		Text (o, "statut", "Prêt", "Ready");
+		Check ("input English -> output French", o.WaitFor (Shows ("close", "Fermer"), 5000));
+		Text (o, "walls", "Murs", "Walls");
+		Text (o, "status", "Prêt", "Ready");
 		Language (root, "hu", false, "en");
-		Check ("entree anglais -> sortie hongrois", o.WaitFor (Affiche ("fermer", "Bezárás"), 5000));
-		Text (o, "murs", "Falak", "Walls");
+		Check ("input English -> output Hungarian", o.WaitFor (Shows ("close", "Bezárás"), 5000));
+		Text (o, "walls", "Falak", "Walls");
 		Language (root, "fr", false, "de");
-		Check ("entree allemand sur un script anglais : rien a traduire", o.WaitFor (Affiche ("fermer", "Close"), 5000));
-		Text (o, "murs", "Walls", "Walls");
+		Check ("input German on an English script: nothing to translate", o.WaitFor (Shows ("close", "Close"), 5000));
+		Text (o, "walls", "Walls", "Walls");
 		Language (root, "en", false, "en");
 		Sleep (1500);
-		Text (o, "fermer", "Close", "Close");				// input = output
-		Text (o, "logique", "ok");
+		Text (o, "close", "Close", "Close");				// input = output
+		Text (o, "logic", "ok");
 		DWORD code = 1;
-		Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+		Check ("clean exit", o.Finish (code, 10000) && code == 0);
 		// Step 3: back to the French script and English output.
 		SetEnvironmentVariableW (L"BENCH_UI", nullptr);
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_TOOL", nullptr);
@@ -1109,7 +1164,7 @@ int main ()
 	//      engine brings the original text back;
 	//   5. engine stopped, script relaunched: the translations come back from the cache
 	//      alone; an already-English text ("Options") is never sent to the engine.
-	std::printf ("\n[3d] Traduction automatique hors ligne (moteur d'essai)\n");
+	std::printf ("\n[3d] Automatic offline translation (test engine)\n");
 	{
 		const int port = 8792;	// not the port of a real engine (8779)
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_ENGINE_PORT", std::to_wstring (port).c_str ());
@@ -1122,26 +1177,26 @@ int main ()
 		{
 			// Step 1: no engine yet; wait 3 s to be sure nothing arrives for the unknown text.
 			Tool o;
-			Check ("lancement, moteur absent", o.Launch (script, root));
-			Check ("dictionnaire applique sans moteur", o.WaitFor (Affiche ("fermer", "Close"), 30000));
+			Check ("launch, engine absent", o.Launch (script, root));
+			Check ("dictionary applied without engine", o.WaitFor (Shows ("close", "Close"), 30000));
 			Sleep (3000);
-			Text (o, "inconnu", "Texte inconnu", "Texte inconnu");		// engine absent: original text
-			Text (o, "logique", "ok");
+			Text (o, "unknown", "Texte inconnu", "Texte inconnu");		// engine absent: original text
+			Text (o, "logic", "ok");
 
 			// Step 2: start the test engine while the window is open.
 			engine = StartEngine (port, journal);
-			Check ("moteur d'essai lance", engine != nullptr);
-			Check ("moteur revenu : phrase hors dictionnaire traduite en direct (< 25 s)",
-					  o.WaitFor (Affiche ("inconnu", "[en] Texte inconnu"), 25000));
-			Text (o, "inconnu", "[en] Texte inconnu", "Texte inconnu");
+			Check ("test engine started", engine != nullptr);
+			Check ("engine back: sentence outside the dictionaries translated live (< 25 s)",
+					  o.WaitFor (Shows ("unknown", "[en] Texte inconnu"), 25000));
+			Text (o, "unknown", "[en] Texte inconnu", "Texte inconnu");
 			// The title may arrive in the engine's next batch
-			Check ("titre traduit automatiquement", o.WaitFor (Affiche ("titre", "[en] Outil de démonstration"), 5000));
-			Text (o, "titre", "[en] Outil de démonstration", "Outil de démonstration");
-			Text (o, "fermer", "Close", "Fermer");						// the dictionary wins
-			Text (o, "chemin", "C:\\Projets\\plan.pln", "C:\\Projets\\plan.pln");	// data: never sent
+			Check ("title translated automatically", o.WaitFor (Shows ("title", "[en] Outil de démonstration"), 5000));
+			Text (o, "title", "[en] Outil de démonstration", "Outil de démonstration");
+			Text (o, "close", "Close", "Fermer");						// the dictionary wins
+			Text (o, "path", "C:\\Projets\\plan.pln", "C:\\Projets\\plan.pln");	// data: never sent
 			Text (o, "code", "MUR-01", "MUR-01");
-			Text (o, "ligne_arbre", "Murs", "Murs");
-			Text (o, "logique", "ok");
+			Text (o, "tree_row", "Murs", "Murs");
+			Text (o, "logic", "ok");
 
 			// Step 3: the cache file of the "test" provider, French -> English, must hold the
 			// translation (polled for up to about 3 s).
@@ -1152,19 +1207,19 @@ int main ()
 				if (!cached)
 					Sleep (100);
 			}
-			Check ("traduction gardee dans cache\\fr-en.json (langue fr reconnue)", cached);
+			Check ("translation kept in cache\\fr-en.json (fr language recognised)", cached);
 
 			// Step 4: Hungarian output -> new request to the engine ("[hu] ..."), the
 			// dictionary still gives "Bezárás"; then engine disabled -> original text.
 			Language (root, "hu", false, "", true);
-			Check ("autre langue de sortie : nouvelle traduction automatique", o.WaitFor (Affiche ("inconnu", "[hu] Texte inconnu"), 10000));
-			Text (o, "fermer", "Bezárás", "Fermer");
+			Check ("other output language: new automatic translation", o.WaitFor (Shows ("unknown", "[hu] Texte inconnu"), 10000));
+			Text (o, "close", "Bezárás", "Fermer");
 
 			Language (root, "en", false, "", false);
-			Check ("moteur desactive : texte d'original", o.WaitFor (Affiche ("inconnu", "Texte inconnu"), 5000));
-			Text (o, "fermer", "Close", "Fermer");
+			Check ("engine disabled: original text", o.WaitFor (Shows ("unknown", "Texte inconnu"), 5000));
+			Text (o, "close", "Close", "Fermer");
 			DWORD code = 1;
-			Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+			Check ("clean exit", o.Finish (code, 10000) && code == 0);
 		}
 		StopEngine (engine);
 
@@ -1173,14 +1228,14 @@ int main ()
 		Language (root, "en", false, "", true);
 		{
 			Tool o;
-			Check ("relance, moteur arrete", o.Launch (script, root));
-			Check ("traduction reprise du cache, sans moteur", o.WaitFor (Affiche ("inconnu", "[en] Texte inconnu"), 30000));
+			Check ("relaunch, engine stopped", o.Launch (script, root));
+			Check ("translation taken from the cache, without engine", o.WaitFor (Shows ("unknown", "[en] Texte inconnu"), 30000));
 			// The title is created before the script's language is recognised: it follows shortly
-			Check ("titre repris du cache", o.WaitFor (Affiche ("titre", "[en] Outil de démonstration"), 5000));
-			Text (o, "titre", "[en] Outil de démonstration", "Outil de démonstration");
-			Text (o, "cadre", "Options", "Options");			// already English: never sent to the engine
+			Check ("title taken from the cache", o.WaitFor (Shows ("title", "[en] Outil de démonstration"), 5000));
+			Text (o, "title", "[en] Outil de démonstration", "Outil de démonstration");
+			Text (o, "frame", "Options", "Options");			// already English: never sent to the engine
 			DWORD code = 1;
-			Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+			Check ("clean exit", o.Finish (code, 10000) && code == 0);
 		}
 		// Clean up: default script name, engine disabled, English output.
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_TOOL", nullptr);
@@ -1203,13 +1258,13 @@ int main ()
 	//   4. back to DeepL: its own cache gives its translation back;
 	//   5. after the run: no dictionary text and no data (path, code) ever reached the
 	//      service, and the missing Google key is explained in log.txt.
-	std::printf ("\n[3e] Traducteurs en ligne (faux serveur, formats reels des 5 services)\n");
+	std::printf ("\n[3e] Online translators (fake server, real formats of the 5 services)\n");
 	{
 		// Fake services on 8798, engine on 8796 (both distinct from the other scenarios).
 		const int portServices = 8798;
 		const int port = 8796;
 		FakeServer fake;
-		Check ("faux serveur de traduction demarre", fake.Start (portServices));
+		Check ("fake translation server started", fake.Start (portServices));
 		const std::wstring base = L"http://127.0.0.1:" + std::to_wstring (portServices);
 		for (const wchar_t* name : { L"DEEPL", L"MICROSOFT", L"GOOGLE", L"MYMEMORY", L"LIBRETRANSLATE" })
 			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + name).c_str (), base.c_str ());
@@ -1218,17 +1273,17 @@ int main ()
 		// Step 1: keys.json template written by the add-on code, then overwritten below.
 		const std::wstring keys = TT::KeysPath (root);
 		std::wstring error;
-		Check ("modele de keys.json cree", TT::CreateKeysTemplate (root, error) && TT::FileExists (keys));
+		Check ("keys.json template created", TT::CreateKeysTemplate (root, error) && TT::FileExists (keys));
 		// The Google key is missing at first (the keys match what FakeServer expects)
 		Write (keys, "{\"deepl\": {\"key\": \"cle-deepl:fx\"}, \"microsoft\": {\"key\": \"cle-ms\", \"region\": \"westeurope\"},"
 					  " \"google\": {\"key\": \"\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"key\": \"\"}}");
 		HANDLE engine = StartEngine (port, TT::Join (root, L"log.txt"), L"--keys \"" + keys + L"\"");
-		Check ("moteur lance avec keys.json", engine != nullptr);
+		Check ("engine started with keys.json", engine != nullptr);
 		{
 			// Input language fixed to French, engine on, provider DeepL to start with.
 			Tool o;
 			Language (root, "en", false, "fr", true, "deepl");
-			Check ("lancement", o.Launch (script, root));
+			Check ("launch", o.Launch (script, root));
 			// Step 2: expected answer of each provider for "Text unknown" (DeepL asks for
 			// EN-GB as target, the others for "en").
 			const struct { const char* code; const char* expected; } services[] = {
@@ -1239,40 +1294,40 @@ int main ()
 			};
 			for (const auto& s : services) {
 				Language (root, "en", false, "fr", true, s.code);
-				Check (std::string (s.code) + " : phrase traduite (format de requete et de reponse du service)",
-						  o.WaitFor (Affiche ("inconnu", s.expected), 20000), o.Read ("inconnu").displayed);
-				Text (o, "fermer", "Close", "Fermer");			// dictionary first
+				Check (std::string (s.code) + ": sentence translated (request and response format of the service)",
+						  o.WaitFor (Shows ("unknown", s.expected), 20000), o.Read ("unknown").displayed);
+				Text (o, "close", "Close", "Fermer");			// dictionary first
 			}
-			Text (o, "logique", "ok");
+			Text (o, "logic", "ok");
 
 			// Step 3: Google without a key -> original kept (checked again after 2 s, to be
 			// sure no translation arrives), then the key is written into keys.json.
 			Language (root, "en", false, "fr", true, "google");
-			Check ("google sans cle : texte d'origine garde", o.WaitFor (Affiche ("inconnu", "Texte inconnu"), 10000));
+			Check ("google without a key: original text kept", o.WaitFor (Shows ("unknown", "Texte inconnu"), 10000));
 			Sleep (2000);
-			Text (o, "inconnu", "Texte inconnu", "Texte inconnu");
+			Text (o, "unknown", "Texte inconnu", "Texte inconnu");
 			Write (keys, "{\"deepl\": {\"key\": \"cle-deepl:fx\"}, \"microsoft\": {\"key\": \"cle-ms\", \"region\": \"westeurope\"},"
 						  " \"google\": {\"key\": \"cle-google\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"key\": \"\"}}");
-			Check ("cle Google ajoutee a chaud : traduit au nouvel essai (< 30 s)",
-					  o.WaitFor (Affiche ("inconnu", "GG:en:Texte inconnu"), 30000), o.Read ("inconnu").displayed);
+			Check ("Google key hot-added: translated on the next retry (< 30 s)",
+					  o.WaitFor (Shows ("unknown", "GG:en:Texte inconnu"), 30000), o.Read ("unknown").displayed);
 
 			// Step 4: each provider has its own cache folder: DeepL's answer comes back.
 			Language (root, "en", false, "fr", true, "deepl");
-			Check ("retour a DeepL : son cache redonne sa traduction", o.WaitFor (Affiche ("inconnu", "DL:EN-GB:Texte inconnu"), 10000));
-			Text (o, "logique", "ok");
+			Check ("back to DeepL: its cache gives its translation back", o.WaitFor (Shows ("unknown", "DL:EN-GB:Texte inconnu"), 10000));
+			Text (o, "logic", "ok");
 			DWORD code = 1;
-			Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
+			Check ("clean exit", o.Finish (code, 10000) && code == 0);
 		}
 		// Step 5: privacy checks on everything the fake service received, then the log
 		// line about the missing Google key; finally clean up the engine, the server and
 		// the variables.
-		Check ("aucun texte du dictionnaire envoye en ligne (\"Fermer\")", !fake.Received ("Fermer"));
-		Check ("aucune donnee envoyee en ligne (chemin, code)", !fake.Received ("C:\\Projets\\plan.pln") && !fake.Received ("MUR-01"));
+		Check ("no dictionary text sent online (\"Fermer\")", !fake.Received ("Fermer"));
+		Check ("no data sent online (path, code)", !fake.Received ("C:\\Projets\\plan.pln") && !fake.Received ("MUR-01"));
 		const std::vector<std::string> journal = TT::LastLines (TT::Join (root, L"log.txt"), 300);
 		bool reported = false;
 		for (const std::string& l : journal)
-			reported = reported || l.find ("cle Google absente") != std::string::npos;
-		Check ("journal : la cle Google manquante est expliquee", reported);
+			reported = reported || l.find ("Google key missing") != std::string::npos;
+		Check ("log: the missing Google key is explained", reported);
 		StopEngine (engine);
 		fake.Stop ();
 		for (const wchar_t* name : { L"DEEPL", L"MICROSOFT", L"GOOGLE", L"MYMEMORY", L"LIBRETRANSLATE" })
@@ -1296,13 +1351,13 @@ int main ()
 	//   4. what the "Save" button of that window does: the engine writes the e-mail
 	//      into keys.json, keeping the other entries; MyMemory then translates again (the
 	//      fake server only blocks requests without an e-mail).
-	std::printf ("\n[3f] Corrections de termes (story -> étage) et quota MyMemory\n");
+	std::printf ("\n[3f] Term corrections (story -> étage) and MyMemory quota\n");
 	{
 		// Fake services on 8799, engine on 8795; only MyMemory and LibreTranslate redirected.
 		const int portServices = 8799;
 		const int port = 8795;
 		FakeServer fake;
-		Check ("faux serveur de traduction demarre", fake.Start (portServices));
+		Check ("fake translation server started", fake.Start (portServices));
 		const std::wstring base = L"http://127.0.0.1:" + std::to_wstring (portServices);
 		for (const wchar_t* name : { L"MYMEMORY", L"LIBRETRANSLATE" })
 			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + name).c_str (), base.c_str ());
@@ -1314,44 +1369,44 @@ int main ()
 		const std::wstring keys = TT::KeysPath (root);
 		Write (keys, "{\"_explanation\": \"test\", \"deepl\": {\"key\": \"cle-deepl:fx\"}, \"mymemory\": {\"email\": \"\"}}");
 		HANDLE engine = StartEngine (port, TT::Join (root, L"log.txt"), L"--no-dialog --keys \"" + keys + L"\"");
-		Check ("moteur lance", engine != nullptr);
-		Check ("corrections.json pre-rempli par l'add-on", TT::FileExists (TT::CorrectionsPath (root)));
+		Check ("engine started", engine != nullptr);
+		Check ("corrections.json pre-filled by the add-on", TT::FileExists (TT::CorrectionsPath (root)));
 		{
 			// Step 1: English -> French through LibreTranslate, default corrections.
 			Tool o;
 			Language (root, "fr", false, "en", true, "libretranslate");
-			Check ("lancement (script en anglais)", o.Launch (script, root));
-			Check ("\"All stories\" -> \"Toutes les histoires\" corrige en \"Tous les étages\"",
-					  o.WaitFor (Affiche ("etages", "Tous les étages"), 20000), o.Read ("etages").displayed);
-			Text (o, "etages", "Tous les étages", "All stories");
+			Check ("launch (script in English)", o.Launch (script, root));
+			Check ("\"All stories\" -> \"Toutes les histoires\" corrected to \"Tous les étages\"",
+					  o.WaitFor (Shows ("stories", "Tous les étages"), 20000), o.Read ("stories").displayed);
+			Text (o, "stories", "Tous les étages", "All stories");
 
 			// Step 2: corrections modified while the window is open
 			Write (TT::CorrectionsPath (root),
 					"{\"fr\": [{\"source\": \"story\", \"wrong\": \"histoire\", \"correct\": \"niveau\"},"
 					" {\"wrong\": \"Toutes les histoires\", \"correct\": \"Tous les niveaux\"}]}");
-			Check ("corrections.json modifie : applique en direct, cache compris (pluriel -s automatique)",
-					  o.WaitFor (Affiche ("etages", "Tous les niveaux"), 5000), o.Read ("etages").displayed);
+			Check ("corrections.json modified: applied live, cache included (automatic -s plural)",
+					  o.WaitFor (Shows ("stories", "Tous les niveaux"), 5000), o.Read ("stories").displayed);
 			Write (TT::CorrectionsPath (root), "{\"fr\": []}");
-			Check ("sans correction : traduction brute du service", o.WaitFor (Affiche ("etages", "Toutes les histoires"), 5000),
-					  o.Read ("etages").displayed);
-			Check ("la correction ne touche pas le dictionnaire", o.Read ("fermer").displayed == "Fermer");
+			Check ("no correction: raw service translation", o.WaitFor (Shows ("stories", "Toutes les histoires"), 5000),
+					  o.Read ("stories").displayed);
+			Check ("corrections do not touch the dictionary", o.Read ("close").displayed == "Fermer");
 
 			// Step 3: anonymous MyMemory quota reached (English -> German). The dictionary
 			// still gives "Schließen"; 2.5 s later the unknown text must still be original,
 			// and log.txt must report the anonymous quota (polled for up to about 4 s).
 			fake.anonymousQuota = true;
 			Language (root, "de", false, "en", true, "mymemory");
-			Check ("quota MyMemory : le texte d'origine reste (dictionnaire applique)", o.WaitFor (Affiche ("fermer", "Schließen"), 10000));
+			Check ("MyMemory quota: the original text stays (dictionary applied)", o.WaitFor (Shows ("close", "Schließen"), 10000));
 			Sleep (2500);
-			Text (o, "inconnu", "Texte inconnu", "Texte inconnu");
+			Text (o, "unknown", "Texte inconnu", "Texte inconnu");
 			bool quota = false;
 			for (int i = 0; i < 20 && !quota; ++i) {
 				for (const std::string& l : TT::LastLines (TT::Join (root, L"log.txt"), 60))
-					quota = quota || l.find ("quota MyMemory atteint (anonyme") != std::string::npos;
+					quota = quota || l.find ("MyMemory quota reached (anonymous") != std::string::npos;
 				if (!quota)
 					Sleep (200);
 			}
-			Check ("journal : quota MyMemory anonyme detecte (fenetre e-mail demandee)", quota);
+			Check ("log: anonymous MyMemory quota detected (e-mail window requested)", quota);
 
 			// Step 4: what the window's "Save" button does: the e-mail is written into
 			// keys.json (engine run once with --save-email, exit code 0 = written);
@@ -1360,7 +1415,7 @@ int main ()
 			GetModuleFileNameW (nullptr, exe, MAX_PATH);
 			std::wstring path = exe;
 			path = path.substr (0, path.find_last_of (L'\\') + 1) + L"TapirTranslatorEngine.exe";
-			std::wstring line = L"\"" + path + L"\" --save-email \"" + keys + L"\" moi@exemple.fr";
+			std::wstring line = L"\"" + path + L"\" --save-email \"" + keys + L"\" me@example.com";
 			std::vector<wchar_t> buffer (line.begin (), line.end ());
 			buffer.push_back (L'\0');
 			STARTUPINFOW si = {};
@@ -1375,14 +1430,14 @@ int main ()
 			}
 			std::string c;
 			TT::ReadWholeFile (keys, c);
-			Check ("e-mail enregistre dans keys.json", code == 0 && c.find ("\"email\": \"moi@exemple.fr\"") != std::string::npos);
-			Check ("les autres cles de keys.json sont gardees", c.find ("\"key\": \"cle-deepl:fx\"") != std::string::npos &&
+			Check ("e-mail saved in keys.json", code == 0 && c.find ("\"email\": \"me@example.com\"") != std::string::npos);
+			Check ("the other keys of keys.json are kept", c.find ("\"key\": \"cle-deepl:fx\"") != std::string::npos &&
 																	c.find ("\"_explanation\": \"test\"") != std::string::npos);
-			Check ("avec l'e-mail : MyMemory traduit de nouveau (< 30 s)", o.WaitFor (Affiche ("inconnu", "MM:de:Texte inconnu"), 30000),
-					  o.Read ("inconnu").displayed);
-			Text (o, "logique", "ok");
+			Check ("with the e-mail: MyMemory translates again (< 30 s)", o.WaitFor (Shows ("unknown", "MM:de:Texte inconnu"), 30000),
+					  o.Read ("unknown").displayed);
+			Text (o, "logic", "ok");
 			DWORD end_ = 1;
-			Check ("fermeture propre", o.Finish (end_, 10000) && end_ == 0);
+			Check ("clean exit", o.Finish (end_, 10000) && end_ == 0);
 		}
 		// Clean up: engine, fake server, redirections and script variables.
 		StopEngine (engine);
@@ -1399,16 +1454,16 @@ int main ()
 	// ArchiCAD's environment), but without TAPIR_SCRIPT_ID it must not install itself
 	// (LAYER|missing) and the interface must stay untranslated although English is the
 	// chosen output. TAPIR_SCRIPT_ID is restored afterwards.
-	std::printf ("\n[4] Python lance hors Tapir (pas de TAPIR_SCRIPT_ID)\n");
+	std::printf ("\n[4] Python launched outside Tapir (no TAPIR_SCRIPT_ID)\n");
 	{
 		SetEnvironmentVariableW (L"TAPIR_SCRIPT_ID", nullptr);
 		Tool o;
-		Check ("lancement", o.Launch (script, root));
-		Check ("couche inactive", o.WaitForLine ("LAYER|missing", 30000));
-		Check ("interface non traduite", o.WaitFor (Affiche ("titre", "Outil de démonstration"), 10000));
+		Check ("launch", o.Launch (script, root));
+		Check ("layer inactive", o.WaitForLine ("LAYER|missing", 30000));
+		Check ("interface not translated", o.WaitFor (Shows ("title", "Outil de démonstration"), 10000));
 		DWORD code = 1;
-		Check ("fermeture propre", o.Finish (code, 10000) && code == 0);
-		SetEnvironmentVariableW (L"TAPIR_SCRIPT_ID", L"tapir-banc-1");
+		Check ("clean exit", o.Finish (code, 10000) && code == 0);
+		SetEnvironmentVariableW (L"TAPIR_SCRIPT_ID", L"tapir-bench-1");
 	}
 
 	// --- [5] layer log -----------------------------------------------------------------------
@@ -1416,20 +1471,20 @@ int main ()
 	// After all the runs above, the last 200 log lines must exist and contain none of the
 	// (French) words of the layer's internal error messages: "interception", "after call",
 	// "watchdog", "impossible", "unreadable". Offending lines are printed.
-	std::printf ("\n[5] Journal de la couche\n");
+	std::printf ("\n[5] Layer log\n");
 	{
 		const std::vector<std::string> lines = TT::LastLines (TT::Join (root, L"log.txt"), 200);
 		bool error = false;
 		for (const std::string& l : lines) {
-			if (l.find ("interception") != std::string::npos || l.find ("apres call") != std::string::npos ||
-				l.find ("surveillance") != std::string::npos || l.find ("impossible") != std::string::npos ||
-				l.find ("illisible") != std::string::npos) {
+			if (l.find ("interception") != std::string::npos || l.find ("after call") != std::string::npos ||
+				l.find ("watchdog") != std::string::npos || l.find ("failed") != std::string::npos ||
+				l.find ("unreadable") != std::string::npos) {
 				error = true;
 				std::printf ("         | %s\n", l.c_str ());
 			}
 		}
-		Check ("journal ecrit", !lines.empty ());
-		Check ("aucune erreur interne de la couche", !error);
+		Check ("log written", !lines.empty ());
+		Check ("no internal error of the layer", !error);
 	}
 
 	// --- [6] language of the tool itself (menus, messages, window) ---------------------------
@@ -1441,30 +1496,30 @@ int main ()
 	//   5. the menus generated at build time (RFIX\Tapir_TranslatorMenus.grc, next to the
 	//      Tests folder) contain, for each of the 20 languages, its 5 menu STR# resources
 	//      and their status-bar help resources (+ HelpOffset), and the Japanese text.
-	std::printf ("\n[6] Langue de Tapir Translator (20 langues, celle d'ArchiCAD par defaut)\n");
+	std::printf ("\n[6] Language of Tapir Translator (20 languages, ArchiCAD's by default)\n");
 	{
 		// Steps 1 to 3
-		Check ("table des textes complete (51 textes x 20 langues)", TT::MissingTexts () == 0,
-				  std::to_string (TT::MissingTexts ()) + " case(s) vide(s)");
-		Check ("ArchiCAD FRA -> francais", TT::InterfaceIndex (TT::LanguageFromArchicad ("FRA")) == 0);
-		Check ("ArchiCAD GER / AUT -> allemand", TT::LanguageFromArchicad ("GER") == "de" && TT::LanguageFromArchicad ("AUT") == "de");
-		Check ("ArchiCAD INT / USA / UKI -> anglais", TT::LanguageFromArchicad ("INT") == "en" && TT::LanguageFromArchicad ("UKI") == "en");
-		Check ("ArchiCAD BRA -> portugais, TAI -> chinois, JPN -> japonais",
+		Check ("texts table complete (51 texts x 20 languages)", TT::MissingTexts () == 0,
+				  std::to_string (TT::MissingTexts ()) + " empty cell(s)");
+		Check ("ArchiCAD FRA -> French", TT::InterfaceIndex (TT::LanguageFromArchicad ("FRA")) == 0);
+		Check ("ArchiCAD GER / AUT -> German", TT::LanguageFromArchicad ("GER") == "de" && TT::LanguageFromArchicad ("AUT") == "de");
+		Check ("ArchiCAD INT / USA / UKI -> English", TT::LanguageFromArchicad ("INT") == "en" && TT::LanguageFromArchicad ("UKI") == "en");
+		Check ("ArchiCAD BRA -> Portuguese, TAI -> Chinese, JPN -> Japanese",
 				  TT::LanguageFromArchicad ("BRA") == "pt" && TT::LanguageFromArchicad ("TAI") == "zh" && TT::LanguageFromArchicad ("JPN") == "ja");
-		Check ("version inconnue -> anglais", TT::LanguageFromArchicad ("XYZ") == "en" && TT::InterfaceIndex ("xx") == 1);
-		Check ("textes avec valeurs (TxtF)", TT::TxtF (TT::R_STARTUP, 2, { { "v", "9" }, { "l", "fr -> de" } }) ==
+		Check ("unknown version -> English", TT::LanguageFromArchicad ("XYZ") == "en" && TT::InterfaceIndex ("xx") == 1);
+		Check ("texts with values (TxtF)", TT::TxtF (TT::R_STARTUP, 2, { { "v", "9" }, { "l", "fr -> de" } }) ==
 												"Tapir Translator 9 aktiv. Sprachen: fr -> de.");
-		Check ("fenetre du quota en hongrois", std::string (TT::Txt (TT::D_SAVE, TT::InterfaceIndex ("hu"))) == "Mentés");
+		Check ("quota window in Hungarian", std::string (TT::Txt (TT::D_SAVE, TT::InterfaceIndex ("hu"))) == "Mentés");
 
 		// Step 4
 		TT::Settings r;
 		r.interface = "ja";
 		std::wstring error;
 		TT::WriteSettings (root, r, error);
-		Check ("reglages : langue de l'outil relue (ja)", TT::ReadSettings (root).interface == "ja");
+		Check ("settings: tool language read back (ja)", TT::ReadSettings (root).interface == "ja");
 		r.interface = "";
 		TT::WriteSettings (root, r, error);
-		Check ("reglages : langue de l'outil = comme ArchiCAD (vide)", TT::ReadSettings (root).interface.empty ());
+		Check ("settings: tool language = like ArchiCAD (empty)", TT::ReadSettings (root).interface.empty ());
 
 		// Step 5: for language l, menu m has the id MenuBase (l) + m, its help + HelpOffset.
 		std::string grc;
@@ -1478,7 +1533,7 @@ int main ()
 					   grc.find ("'STR#' " + std::to_string (id + TT::HelpOffset) + " ") != std::string::npos;
 			}
 		}
-		Check ("menus generes pour les 20 langues (5 menus + aides chacune)", all);
+		Check ("menus generated for the 20 languages (5 menus + helps each)", all);
 
 		// Step 6: every resource ID read by the ArchiCAD API (a short) must stay below 32767; above,
 		// it wraps to a negative number and ArchiCAD unloads the add-on (bug of v0.7.0).
@@ -1487,11 +1542,11 @@ int main ()
 			for (int m = 0; m < 5; ++m)
 				fitsShort = fitsShort && TT::MenuBase (l) + m + TT::HelpOffset <= 32767 && TT::MenuBase (l) + m > 32000;
 		}
-		Check ("identifiants de menus et d'aides entre 32001 et 32767 (short de l'API ArchiCAD)", fitsShort);
+		Check ("menu and help IDs between 32001 and 32767 (ArchiCAD API short)", fitsShort);
 		bool noIdTooLarge = true;
 		for (size_t p = grc.find ("'STR#' "); p != std::string::npos; p = grc.find ("'STR#' ", p + 7))
 			noIdTooLarge = noIdTooLarge && std::atoi (grc.c_str () + p + 7) <= 32767;
-		Check ("aucune ressource generee au-dessus de 32767", noIdTooLarge);
+		Check ("no generated resource above 32767", noIdTooLarge);
 
 		// Step 7: the generated menus must really be inside the built .apx (bug of v0.7.0 / v0.7.1:
 		// RFIX.win/Tapir_Translator.rc2 did not include them, ArchiCAD answered -7003 and showed no
@@ -1512,15 +1567,15 @@ int main ()
 		}
 		if (module != nullptr)
 			FreeLibrary (module);
-		Check ("Tapir_Translator.apx contient les 200 ressources de menus et d'aides", resourcesInside);
-		Check ("menus generes : japonais present", grc.find (TT::Txt (TT::M_TRANSLATOR, TT::InterfaceIndex ("ja"))) != std::string::npos);
+		Check ("Tapir_Translator.apx contains the 200 menu and help resources", resourcesInside);
+		Check ("generated menus: Japanese present", grc.find (TT::Txt (TT::M_TRANSLATOR, TT::InterfaceIndex ("ja"))) != std::string::npos);
 	}
 
 	// Summary; the temporary folder is kept when something failed, for examination.
-	std::printf ("\n%d OK, %d ECHEC(S)\n", g_ok, g_failures);
+	std::printf ("\n%d OK, %d FAILED\n", g_ok, g_failures);
 	if (g_failures == 0)
 		DeleteTree (root);
 	else
-		std::printf ("dossier garde pour examen : %s\n", TT::Utf8 (root).c_str ());
+		std::printf ("folder kept for examination: %s\n", TT::Utf8 (root).c_str ());
 	return g_failures == 0 ? 0 : 1;
 }

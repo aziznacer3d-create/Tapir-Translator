@@ -23,7 +23,7 @@ namespace TT {
 
 namespace {
 
-const char kMagic[8] = { 'T', 'T', 'C', 'H', 'A', 'R', 'G', 'E' };	// footer signature
+const char kMagic[8] = { 'T', 'T', 'P', 'A', 'Y', 'L', 'O', 'D' };	// footer signature
 constexpr size_t kFooterSize = 32;		// footer size: 8-byte signature + 3 x u64
 constexpr DWORD kBufferSize = 1u << 20;		// copy buffer size (1 MB)
 
@@ -139,7 +139,7 @@ struct IndexEntry {
 // treated as having no payload).
 bool ReadIndex (HANDLE h, unsigned long long& payloadStart, std::wstring& hash, std::vector<IndexEntry>& inputs)
 {
-	// Step 1: the file must be large enough for a footer, and end with the "TTCHARGE" signature.
+	// Step 1: the file must be large enough for a footer, and end with the "TTPAYLOD" signature.
 	payloadStart = 0;
 	const unsigned long long total = FileSize (h);
 	if (total < kFooterSize)
@@ -170,7 +170,7 @@ bool ReadIndex (HANDLE h, unsigned long long& payloadStart, std::wstring& hash, 
 		const size_t t1 = line.find ('\t');
 		if (t1 == std::string::npos)
 			continue;
-		if (line.compare (0, t1, "empreinte") == 0) {
+		if (line.compare (0, t1, "hash") == 0) {
 			hash = FromUtf8 (line.substr (t1 + 1));
 			continue;
 		}
@@ -201,7 +201,7 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 	FileHandle f;
 	f.h = CreateFileW (target.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (!f.IsOpen ()) {
-		journal.push_back (L"ouverture impossible : " + target);
+		journal.push_back (L"cannot open: " + target);
 		return false;
 	}
 	// Step 2: if a previous payload is present, truncate the file at its start.
@@ -212,7 +212,7 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 		if (ReadIndex (f.h, start, e, oldOnes) && start > 0) {
 			Seek (f.h, start);
 			SetEndOfFile (f.h);
-			journal.push_back (L"ancienne charge retiree (" + e + L")");
+			journal.push_back (L"old payload removed (" + e + L")");
 		}
 	}
 	// The new payload starts at the current end of the file.
@@ -222,7 +222,7 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 	std::vector<std::wstring> files;
 	ListFiles (folder, L"", files);
 	if (files.empty ()) {
-		journal.push_back (L"dossier vide : " + folder);
+		journal.push_back (L"empty folder: " + folder);
 		return false;
 	}
 	// Step 4: append each file in turn, hashing its relative path and its content (FNV-1a,
@@ -237,7 +237,7 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 		source.h = CreateFileW (Join (folder, rel).c_str (), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
 								FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
 		if (!source.IsOpen ()) {
-			journal.push_back (L"lecture impossible : " + rel);
+			journal.push_back (L"cannot read: " + rel);
 			return false;
 		}
 		const std::string relUtf8 = Utf8 (rel);
@@ -251,18 +251,18 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 				break;
 			Fnv (hashNum, buffer.get (), read_);
 			if (!WriteExact (f.h, buffer.get (), read_)) {
-				journal.push_back (L"ecriture impossible dans " + target);
+				journal.push_back (L"cannot write to " + target);
 				return false;
 			}
 			size += read_;
 		}
 		index += relUtf8 + "\t" + std::to_string (position) + "\t" + std::to_string (size) + "\n";
 		position += size;
-		journal.push_back (rel + L" : " + std::to_wstring (size) + L" octets");
+		journal.push_back (rel + L" : " + std::to_wstring (size) + L" bytes");
 	}
 	// Step 5: the index, with the hash line first, follows the last file.
 	hash = Hex (hashNum);
-	index = "empreinte\t" + Utf8 (hash) + "\n" + index;
+	index = "hash\t" + Utf8 (hash) + "\n" + index;
 	if (!WriteExact (f.h, index.data (), static_cast<DWORD> (index.size ())))
 		return false;
 	// Step 6: the 32-byte footer: signature, index start (= end of the last file), index size,
@@ -274,7 +274,7 @@ bool Packer (const std::wstring& target, const std::wstring& folder, std::wstrin
 	WriteU64 (footer + 24, start);
 	if (!WriteExact (f.h, footer, kFooterSize))
 		return false;
-	journal.push_back (std::to_wstring (files.size ()) + L" fichier(s), " + std::to_wstring (position - start) + L" octets, empreinte " + hash);
+	journal.push_back (std::to_wstring (files.size ()) + L" file(s), " + std::to_wstring (position - start) + L" bytes, hash " + hash);
 	return true;
 }
 
@@ -307,7 +307,7 @@ bool ExtractPayload (const std::wstring& file, const std::wstring& base, std::ws
 	f.h = CreateFileW (file.c_str (), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
 					   FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
 	if (!f.IsOpen ()) {
-		journal.push_back (L"ouverture impossible : " + file);
+		journal.push_back (L"cannot open: " + file);
 		return false;
 	}
 	// Step 2: read the index; no payload means nothing to extract.
@@ -315,13 +315,13 @@ bool ExtractPayload (const std::wstring& file, const std::wstring& base, std::ws
 	std::wstring hash;
 	std::vector<IndexEntry> inputs;
 	if (!ReadIndex (f.h, start, hash, inputs)) {
-		journal.push_back (L"aucune charge embarquee dans " + file);
+		journal.push_back (L"no embedded payload in " + file);
 		return false;
 	}
 	// Step 3: already extracted (the ".complete" marker exists): nothing more to do.
 	destination = Join (base, hash);
 	if (FileExists (Join (destination, L".complet"))) {
-		journal.push_back (L"moteur deja extrait : " + destination);
+		journal.push_back (L"engine already extracted: " + destination);
 		return true;
 	}
 
@@ -338,14 +338,14 @@ bool ExtractPayload (const std::wstring& file, const std::wstring& base, std::ws
 		FileHandle output;
 		output.h = CreateFileW (path.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 		if (!output.IsOpen () || !Seek (f.h, e.start)) {
-			journal.push_back (L"extraction impossible : " + path);
+			journal.push_back (L"cannot extract: " + path);
 			return false;
 		}
 		unsigned long long rest = e.size;
 		while (rest > 0) {
 			const DWORD n = static_cast<DWORD> (rest > kBufferSize ? kBufferSize : rest);
 			if (!ReadExact (f.h, buffer.get (), n) || !WriteExact (output.h, buffer.get (), n)) {
-				journal.push_back (L"extraction interrompue : " + path);
+				journal.push_back (L"extraction interrupted: " + path);
 				return false;
 			}
 			rest -= n;
@@ -359,13 +359,13 @@ bool ExtractPayload (const std::wstring& file, const std::wstring& base, std::ws
 		// The rename fails if the destination exists: another ArchiCAD instance may have
 		// extracted the same version at the same time, which is fine if it is complete.
 		if (FileExists (Join (destination, L".complet"))) {
-			journal.push_back (L"moteur extrait par une autre instance : " + destination);
+			journal.push_back (L"engine extracted by another instance: " + destination);
 			return true;
 		}
-		journal.push_back (L"renommage impossible : " + tmp);
+		journal.push_back (L"cannot rename: " + tmp);
 		return false;
 	}
-	journal.push_back (L"moteur extrait (" + std::to_wstring (inputs.size ()) + L" fichier(s)) : " + destination);
+	journal.push_back (L"engine extracted (" + std::to_wstring (inputs.size ()) + L" file(s)): " + destination);
 	return true;
 }
 

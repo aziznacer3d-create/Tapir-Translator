@@ -216,7 +216,7 @@ add_custom_command (
 	COMMAND ${CMAKE_COMMAND} "-DOUTPUT=${EmbeddedCpp}" "-DLAYER=${LayerSource}" "-DCOMMON=${CommonSource}"
 			-P "${CMAKE_CURRENT_LIST_DIR}/Tools/Embed.cmake"
 	DEPENDS "${LayerSource}" "${CommonSource}" "${CMAKE_CURRENT_LIST_DIR}/Tools/Embed.cmake"
-	COMMENT "Embedding de la layer de traduction..."
+	COMMENT "Embedding the translation layer..."
 )
 
 set (
@@ -334,7 +334,7 @@ endif ()
 # Step 5 of the build - translation engine (local HTTP server on 127.0.0.1:8779, started by
 # the add-on): relays to the online translators. Linked with Winsock (server) and WinHTTP
 # (client). TT_LOCAL_MODEL adds the offline M2M100 model (off by default).
-option (TT_LOCAL_MODEL "Engine hors line M2M100 (CTranslate2) dans le engine et le .apx (~500 Mo)" OFF)
+option (TT_LOCAL_MODEL "Offline M2M100 engine (CTranslate2) in the engine and the .apx (~500 MB)" OFF)
 if (WIN32)
 	add_executable (TapirTranslatorEngine
 		Engine/EngineMain.cpp
@@ -360,11 +360,11 @@ if (WIN32)
 	# SentencePiece (Apache 2.0, vcpkg x64-windows-static). Static CRT: no DLL to ship.
 	# Used only if TT_LOCAL_MODEL is ON and both libraries are found; otherwise the
 	# stub TranslatorM2M100Missing.cpp is compiled instead.
-	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_external/ct2_install" CACHE PATH "Installation de CTranslate2 (staticText).")
-	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_external/CTranslate2/build" CACHE PATH "Folder de build de CTranslate2 (Ruy, cpu_features).")
+	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_external/ct2_install" CACHE PATH "CTranslate2 installation (static).")
+	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_external/CTranslate2/build" CACHE PATH "CTranslate2 build folder (Ruy, cpu_features).")
 	set (TT_VCPKG_STATIC "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
 	if (TT_LOCAL_MODEL AND EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIC}/lib/sentencepiece.lib")
-		message (STATUS "Engine : CTranslate2 + SentencePiece (translator M2M100)")
+		message (STATUS "Engine: CTranslate2 + SentencePiece (M2M100 translator)")
 		# Third-party libraries built with CTranslate2 (Ruy, cpu_features...): Release
 		# builds only, test frameworks excluded; abseil / utf8 libraries needed by SentencePiece
 		file (GLOB_RECURSE CT2_DEPENDANCES "${TT_CT2_BUILD}/third_party/*.lib")
@@ -378,7 +378,7 @@ if (WIN32)
 			"${TT_VCPKG_STATIC}/lib/sentencepiece.lib" "${TT_VCPKG_STATIC}/lib/libprotobuf-lite.lib" ${VCPKG_LIBS})
 		set_property (TARGET TapirTranslatorEngine PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	else ()
-		message (STATUS "Engine : traducteurs en line seulement (TT_LOCAL_MODEL=OFF)")
+		message (STATUS "Engine: online translators only (TT_LOCAL_MODEL=OFF)")
 		target_sources (TapirTranslatorEngine PRIVATE Engine/TranslatorM2M100Missing.cpp)
 	endif ()
 endif ()
@@ -386,7 +386,7 @@ endif ()
 # Step 6 of the build - payload appended to the end of the .apx: engine (and model if it is
 # present in TT_MODEL_DIR). The user copies only the .apx; the add-on extracts the payload
 # on first start.
-set (TT_MODEL_DIR "${CMAKE_CURRENT_LIST_DIR}/model" CACHE PATH "Folder du model de traduction a embed.")
+set (TT_MODEL_DIR "${CMAKE_CURRENT_LIST_DIR}/model" CACHE PATH "Folder of the translation model to embed.")
 if (WIN32)
 	add_executable (Packer
 		Tools/Packer.cpp
@@ -402,14 +402,14 @@ if (WIN32)
 	set (PayloadFolder "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
 	set (ModelCommands "")
 	if (TT_LOCAL_MODEL AND EXISTS "${TT_MODEL_DIR}")
-		message (STATUS "Model embedded : ${TT_MODEL_DIR}")
+		message (STATUS "Model embedded: ${TT_MODEL_DIR}")
 		# Copy the model, and the licenses of the offline engine's third-party components
 		# (CTranslate2, Ruy, SentencePiece, model...)
 		set (ModelCommands
 			COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_MODEL_DIR}" "${PayloadFolder}/model"
 			COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licenses" "${PayloadFolder}/licenses")
 	else ()
-		message (STATUS "Aucun model embedded : le .apx rest leger")
+		message (STATUS "No model embedded: the .apx stays small")
 	endif ()
 	# After the link: empty the payload folder, copy the engine and the project licence
 	# (+ model and licenses), then append the folder to the .apx with Packer
@@ -421,7 +421,7 @@ if (WIN32)
 		COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_LIST_DIR}/LICENSE" "${PayloadFolder}/licenses/Tapir_Translator_Unlicense.txt"
 		${ModelCommands}
 		COMMAND "$<TARGET_FILE:Packer>" "$<TARGET_FILE:AddOn>" "${PayloadFolder}"
-		COMMENT "Embedding du engine de traduction dans le .apx..."
+		COMMENT "Embedding the translation engine into the .apx..."
 	)
 	# The engine and the packer must exist before the add-on's POST_BUILD runs;
 	# the test bench also reads payloads and the UI texts
@@ -439,7 +439,7 @@ if (WIN32)
 	add_custom_target (LocalizedMenus
 		COMMAND "$<TARGET_FILE:GenerateMenus>" "${CMAKE_CURRENT_LIST_DIR}/RFIX/Tapir_TranslatorMenus.grc"
 		DEPENDS GenerateMenus
-		COMMENT "Menus de Tapir Translator dans les 20 languages..."
+		COMMENT "Tapir Translator menus in the 20 languages..."
 	)
 	add_dependencies (AddOnResources LocalizedMenus)
 endif ()

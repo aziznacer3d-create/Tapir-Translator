@@ -56,7 +56,7 @@ std::string Uppercase (std::string s)
 }
 
 // Base URL of a service.
-//   name    : provider name ("deepl"...), upper-cased into TAPIR_TRANSLATOR_URL_<NOM>
+//   name    : provider name ("deepl"...), upper-cased into TAPIR_TRANSLATOR_URL_<NAME>
 //   defaultValue : official address of the service
 // Returns the value of that environment variable when it is set and not
 // empty (test bench), otherwise defaultValue.
@@ -115,14 +115,14 @@ std::string ServiceMessage (const Http::Response& r)
 	if (detail.empty ())
 		detail = r.body.substr (0, 200);
 	// Step 2: plain meaning of the usual codes (456 = DeepL quota exceeded)
-	std::string sens;
+	std::string meaning;
 	if (r.code == 401 || r.code == 403)
-		sens = "cle refusee : ";
+		meaning = "key refused: ";
 	else if (r.code == 429)
-		sens = "trop de requetes : ";
+		meaning = "too many requests: ";
 	else if (r.code == 456)
-		sens = "quota mensuel atteint : ";
-	return "HTTP " + std::to_string (r.code) + " " + sens + detail;
+		meaning = "monthly quota reached: ";
+	return "HTTP " + std::to_string (r.code) + " " + meaning + detail;
 }
 
 // Checks a service response and parses its JSON body.
@@ -137,7 +137,7 @@ bool Read (const Http::Response& r, Json::Value& v, std::string& error)
 		return false;
 	}
 	if (!Json::Reader (r.body).Read (v)) {
-		error = "reponse illisible : " + r.body.substr (0, 200);
+		error = "unreadable response: " + r.body.substr (0, 200);
 		return false;
 	}
 	return true;
@@ -157,7 +157,7 @@ class DeepL : public OnlineTranslator {
 public:
 	// key : DeepL authentication key from keys.json ("deepl": {"key": ...})
 	explicit DeepL (std::string key) : key_ (std::move (key)) {}
-	std::string Nom () const override { return "DeepL"; }
+	std::string Name () const override { return "DeepL"; }
 
 	// DeepL target language code: DeepL requires a variant for English,
 	// Portuguese and Chinese (British English, European Portuguese,
@@ -178,7 +178,7 @@ public:
 				   std::vector<std::string>& results, std::string& error) override
 	{
 		if (key_.empty ()) {
-			error = "cle DeepL absente (Options > Cles des traducteurs)";
+			error = "DeepL key missing (Online translator > Translator keys)";
 			return false;
 		}
 		// Step 1: Free keys end with ":fx" and use a different host
@@ -198,7 +198,7 @@ public:
 			return false;
 		const Json::Value* t = v.Field ("translations");
 		if (t == nullptr || t->kind != Json::Value::Array || t->array.size () != texts.size ()) {
-			error = "reponse DeepL incomplete";
+			error = "incomplete DeepL response";
 			return false;
 		}
 		results.clear ();
@@ -220,7 +220,7 @@ public:
 	// region : Azure resource region ("microsoft": {"region": ...}), required
 	//          by regional / multi-service resources, may be empty otherwise
 	Microsoft (std::string key, std::string region) : key_ (std::move (key)), region_ (std::move (region)) {}
-	std::string Nom () const override { return "Microsoft Translator"; }
+	std::string Name () const override { return "Microsoft Translator"; }
 
 	// Microsoft language code: simplified Chinese, Norwegian Bokmal,
 	// European Portuguese; other codes unchanged.
@@ -236,7 +236,7 @@ public:
 				   std::vector<std::string>& results, std::string& error) override
 	{
 		if (key_.empty ()) {
-			error = "cle Microsoft absente (Options > Cles des traducteurs)";
+			error = "Microsoft key missing (Online translator > Translator keys)";
 			return false;
 		}
 		// Step 1: languages go in the query string; no "from" = auto-detection
@@ -260,7 +260,7 @@ public:
 		if (!Read (r, v, error))
 			return false;
 		if (v.kind != Json::Value::Array || v.array.size () != texts.size ()) {
-			error = "reponse Microsoft incomplete";
+			error = "incomplete Microsoft response";
 			return false;
 		}
 		results.clear ();
@@ -283,7 +283,7 @@ class Google : public OnlineTranslator {
 public:
 	// key : API key ("google": {"key": ...})
 	explicit Google (std::string key) : key_ (std::move (key)) {}
-	std::string Nom () const override { return "Google Cloud Translation"; }
+	std::string Name () const override { return "Google Cloud Translation"; }
 
 	// Google language code: simplified Chinese, European Portuguese; other
 	// codes unchanged.
@@ -298,7 +298,7 @@ public:
 				   std::vector<std::string>& results, std::string& error) override
 	{
 		if (key_.empty ()) {
-			error = "cle Google absente (Options > Cles des traducteurs)";
+			error = "Google key missing (Online translator > Translator keys)";
 			return false;
 		}
 		// Step 1: the key goes in the query string (URL-encoded)
@@ -318,7 +318,7 @@ public:
 		const Json::Value* d = v.Field ("data");
 		const Json::Value* t = d != nullptr ? d->Field ("translations") : nullptr;
 		if (t == nullptr || t->kind != Json::Value::Array || t->array.size () != texts.size ()) {
-			error = "reponse Google incomplete";
+			error = "incomplete Google response";
 			return false;
 		}
 		results.clear ();
@@ -339,7 +339,7 @@ public:
 	// email : optional address ("mymemory": {"email": ...}) sent as "de=",
 	//         which raises the free daily quota
 	explicit MyMemory (std::string email) : email_ (std::move (email)) {}
-	std::string Nom () const override { return "MyMemory"; }
+	std::string Name () const override { return "MyMemory"; }
 
 	// MyMemory language code: simplified Chinese, European Portuguese; other
 	// codes unchanged.
@@ -398,7 +398,7 @@ public:
 	// url : server address ("libretranslate": {"url": ...})
 	// key : API key if the server requires one ("libretranslate": {"key": ...})
 	LibreTranslate (std::string url, std::string key) : url_ (std::move (url)), key_ (std::move (key)) {}
-	std::string Nom () const override { return "LibreTranslate"; }
+	std::string Name () const override { return "LibreTranslate"; }
 
 	// LibreTranslate language code: Norwegian Bokmal is "nb"; others unchanged.
 	static std::string Code (const std::string& l)
@@ -414,7 +414,7 @@ public:
 		// trailing slashes are removed before appending "/translate"
 		std::string base = ServiceUrl ("libretranslate", url_);
 		if (base.empty ()) {
-			error = "adresse du serveur LibreTranslate absente (Options > Cles des traducteurs)";
+			error = "LibreTranslate server address missing (Online translator > Translator keys)";
 			return false;
 		}
 		while (!base.empty () && base.back () == '/')
@@ -443,7 +443,7 @@ public:
 			results.push_back (t->str);
 			return true;
 		}
-		error = "reponse LibreTranslate incomplete";
+		error = "incomplete LibreTranslate response";
 		return false;
 	}
 

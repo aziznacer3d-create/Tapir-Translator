@@ -17,7 +17,7 @@ namespace {
 // Test translator: prefixes each text with the target language code.
 class TestTranslator : public Translator {
 public:
-	std::string Nom () const override { return "essai (aucun modele)"; }
+	std::string Name () const override { return "test (no model)"; }
 
 	bool Supports (const std::string& language) const override { return ArchicadLanguage (language); }
 

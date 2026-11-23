@@ -51,7 +51,7 @@ How it works, step by step
    always wins over the cache.
 
 7. Corrections. corrections.json fixes wrong ArchiCAD terms produced by online
-   translators (e.g. "story" -> "story_" instead of "etage"). Corrections are applied
+   translators (e.g. "story" -> "histoire" instead of "etage"). Corrections are applied
    when an online/cached translation is displayed, never to dictionary entries.
 
 8. Live reload. Every _PERIOD_MS milliseconds (Tk "after" timer) the layer checks
@@ -66,7 +66,7 @@ Every internal error is written to log.txt and never reaches the script.
 import os
 import sys
 
-LAYER_VERSION = "0.6.0"
+LAYER_VERSION = "0.8.0"
 _PERIOD_MS = 300            # Period (ms) of the live check: settings / dictionaries reload, arrived translations
 _LOG_SIZE = 512 * 1024  # Beyond this size (bytes) the log file is deleted and starts again from zero
 
@@ -230,7 +230,7 @@ class _Engine:
         except FileNotFoundError:
             return None
         except Exception as e:
-            _log("fichier illisible %s : %r" % (path, e))
+            _log("unreadable file %s: %r" % (path, e))
             return None
 
     def reload_if_changed(self):
@@ -251,7 +251,7 @@ class _Engine:
         # no translation) and the "collect missing texts" switch.
         settings = self._read_json(settings_f) or {}
         language = str(settings.get("output", "") or "")
-        if language == "original":
+        if language in ("original", "origine"):	# "origine": versions <= 0.7.5
             language = ""
         self.collect = bool(settings.get("collect", False))
 
@@ -287,7 +287,7 @@ class _Engine:
         if language and source and language == source:
             language = ""          # The requested language is the script's own language
         if language != self.language:
-            _log("outil=%s langue=%s (source=%s) collecte=%s" %
+            _log("tool=%s language=%s (source=%s) collect=%s" %
                      (self._tool_name(), language or "original", source or "?", self.collect))
         self.language = language
         self.table = table if language else {}
@@ -327,8 +327,8 @@ class _Engine:
 
         Input: data = parsed corrections.json, {"fr": [rule, ...], "de": [...], ...};
         language = output language code. A rule looks like:
-             {"source": "story", "wrong": "story_", "correct": "étage"}
-             {"source": ["story", "stories"], "replace": {"story_": "étage", "histoires": "étages"}}
+             {"source": "story", "wrong": "histoire", "correct": "étage"}
+             {"source": ["story", "stories"], "replace": {"histoire": "étage", "histoires": "étages"}}
              {"wrong": "Toutes les histoires", "correct": "Tous les étages"}
         "source" (optional): the rule only applies if the original text contains one of
         these words (whole words, case-insensitive).
@@ -394,11 +394,11 @@ class _Engine:
         """
         if not self.corrections or not isinstance(translated, str) or not translated:
             return translated
-        for source_pattern, motif_, correct in self.corrections:
+        for source_pattern, regex_text, correct in self.corrections:
             # Skip the rule if its "source" words are not in the original text.
             if source_pattern is not None and not source_pattern.search(original):
                 continue
-            translated = motif_.sub(lambda m, c=correct: self._same_case(m.group(0), c), translated)
+            translated = regex_text.sub(lambda m, c=correct: self._same_case(m.group(0), c), translated)
         return translated
 
     def _vote(self, text):
@@ -425,7 +425,7 @@ class _Engine:
         # several languages: "Options", "Zone"...)
         if first[1] >= 2 and first[1] > second:
             self.detected = first[0]
-            _log("langue du script reconnue : %s (%s)" % (self.detected, dict(ranking)))
+            _log("script language detected: %s (%s)" % (self.detected, dict(ranking)))
         return self.detected
 
     @staticmethod
@@ -514,24 +514,24 @@ class _Engine:
                 continue
             pieces = re.split(r"\{[A-Za-z_][A-Za-z0-9_]*\}", key)
             # Step 2: build the pattern: escaped literal, then a capture group per placeholder.
-            motif_ = ""
+            regex_text = ""
             for i, m in enumerate(pieces):
-                motif_ += re.escape(m)
+                regex_text += re.escape(m)
                 if i < len(names):
                     name = names[i]
                     if name in names[:i]:
                         # Same placeholder used twice: back-reference to the first capture.
-                        motif_ += "(?P=%s)" % name
+                        regex_text += "(?P=%s)" % name
                     elif name in _NUMBER_NAMES:
                         # {n} = a number: "{n} elements" must not swallow
                         # "Only the selected elements" ("Only the selected éléments")
-                        motif_ += r"(?P<%s>[-+]?\d+(?:[.,  ]\d+)*)" % name
+                        regex_text += r"(?P<%s>[-+]?\d+(?:[.,  ]\d+)*)" % name
                     else:
                         # {name} = a short text without line break (lazy, at most 80 characters)
-                        motif_ += r"(?P<%s>[^\n]{1,80}?)" % name
+                        regex_text += r"(?P<%s>[^\n]{1,80}?)" % name
             # Step 3: anchor the pattern on the whole text; an invalid pattern is skipped.
             try:
-                patterns.append((re.compile("^" + motif_ + "$", re.S), val))
+                patterns.append((re.compile("^" + regex_text + "$", re.S), val))
             except re.error:
                 pass
         # Step 4: the longest (most precise) templates first
@@ -738,7 +738,7 @@ class _Engine:
                 json.dump(existing, f, ensure_ascii=False, indent=2, sort_keys=True)
             os.replace(tmp, path)
         except Exception as e:
-            _log("ecriture des manquants impossible : %r" % e)
+            _log("cannot write the missing texts: %r" % e)
 
 
 class _Automatic(object):
@@ -973,7 +973,7 @@ class _Automatic(object):
                             pass
                         if e.code == 400:
                             # Language refused, unknown translator: failure stored, no new attempt
-                            _log("traduction refusee (%s) : %s" % (provider, detail))
+                            _log("translation refused (%s): %s" % (provider, detail))
                             with self.lock:
                                 self._load(key)
                                 for t in texts:
@@ -987,7 +987,7 @@ class _Automatic(object):
                             self.requests.discard((provider, source, target, t))
                         if not self.outage_reported:
                             self.outage_reported = True
-                            _log("traduction en ligne indisponible (%s, port %s) : %s ; nouvel essai toutes les %d s"
+                            _log("online translation unavailable (%s, port %s): %s; new attempt every %d s"
                                      % (provider, self.port, detail, int(self.OUTAGE_PAUSE)))
                         self.outage_until = time.time() + self.OUTAGE_PAUSE
                         self.outage_failures = True
@@ -997,7 +997,7 @@ class _Automatic(object):
                 with self.lock:
                     if self.outage_reported:
                         self.outage_reported = False
-                        _log("traduction en ligne retablie (%s)" % provider)
+                        _log("online translation restored (%s)" % provider)
                     self._load(key)
                     m = self.memory[key]
                     for t, r in zip(texts, results):
@@ -1038,7 +1038,7 @@ class _Automatic(object):
                               f, ensure_ascii=False, indent=1, sort_keys=True)
                 os.replace(tmp, path)
             except Exception as e:
-                _log("cache de traduction non enregistre : %r" % e)
+                _log("translation cache not saved: %r" % e)
 
 
 _engine = None          # The single _Engine of this process (created by _install)
@@ -1066,7 +1066,7 @@ class _Proxy(object):
         self._real = real
         # Key -> [original text, displayed text]. The key is
         # (kind, widget path, sub-id, option), kind being "opt", "title", "menu",
-        # "tab", "header" or "canvas_".
+        # "tab", "header" or "canvas".
         self._registry = {}
         self._variables_ = {}   # Name of a displayed Tcl variable -> [original, displayed]
 
@@ -1093,14 +1093,14 @@ class _Proxy(object):
             after = self._before(argv)
             args = tuple(argv)
         except Exception as e:
-            _log("interception call : %r" % e)
+            _log("interception of call: %r" % e)
             after = None
         res = self._real.call(*args)
         if after is not None:
             try:
                 res = after(res)
             except Exception as e:
-                _log("apres call : %r" % e)
+                _log("after call: %r" % e)
         return res
 
     def _tr(self, value):
@@ -1212,7 +1212,7 @@ class _Proxy(object):
         # Case 1: window title ("wm title .path ?title?")
         if a0 == "wm" and a1 == "title" and n >= 3:
             path = str(argv[2])
-            key = ("titre", path, None, None)
+            key = ("title", path, None, None)
             # Wm.title() queries with a 4th argument set to None
             if n >= 4 and argv[3] is not None:
                 # Setting the title: translate and record it.
@@ -1342,7 +1342,7 @@ class _Proxy(object):
                 # After the add, ask the notebook for the tab number of the child window.
                 idx = str(self._real.call(path, "index", child))
                 for opt, original, displayed in done:
-                    self._note(("onglet", path, idx, opt), original, displayed)
+                    self._note(("tab", path, idx, opt), original, displayed)
                 return r
             return note
         if sub == "tab" and n >= 4:
@@ -1352,10 +1352,10 @@ class _Proxy(object):
                 tab = str(argv[2])
             # "tab id -text" alone is a query (give back the original); otherwise options are set.
             if n == 4 and argv[3] in _TEXT_OPTIONS:
-                key = ("onglet", path, tab, argv[3])
+                key = ("tab", path, tab, argv[3])
                 return lambda r: self._render(key, r)
             for opt, original, displayed in self._options(argv, 3):
-                self._note(("onglet", path, tab, opt), original, displayed)
+                self._note(("tab", path, tab, opt), original, displayed)
             return None
 
         # --- ttk.Treeview column headings (the rows are data: never touched)
@@ -1363,10 +1363,10 @@ class _Proxy(object):
             column = str(argv[2])
             # "heading col -text" alone is a query; otherwise options are set.
             if n == 4 and argv[3] in _TEXT_OPTIONS:
-                key = ("entete", path, column, argv[3])
+                key = ("header", path, column, argv[3])
                 return lambda r: self._render(key, r)
             for opt, original, displayed in self._options(argv, 3):
-                self._note(("entete", path, column, opt), original, displayed)
+                self._note(("header", path, column, opt), original, displayed)
             return None
 
         # --- canvas texts: create text x y -text ... / itemconfigure / itemcget
@@ -1383,16 +1383,16 @@ class _Proxy(object):
             def note(r, done=done):
                 # The result of "create" is the new item id, used as sub-id.
                 for opt, original, displayed in done:
-                    self._note(("canevas", path, str(r), opt), original, displayed)
+                    self._note(("canvas", path, str(r), opt), original, displayed)
                 return r
             return note
         if sub == "itemconfigure" and n >= 5:
             item = str(argv[2])
             for opt, original, displayed in self._options(argv, 3):
-                self._note(("canevas", path, item, opt), original, displayed)
+                self._note(("canvas", path, item, opt), original, displayed)
             return None
         if sub == "itemcget" and n == 4 and argv[3] in _TEXT_OPTIONS:
-            key = ("canevas", path, str(argv[2]), argv[3])
+            key = ("canvas", path, str(argv[2]), argv[3])
             return lambda r: self._render(key, r)
         return None
 
@@ -1464,15 +1464,15 @@ class _Proxy(object):
                 # (no translation / restoration on the way).
                 if kind == "opt":
                     current = real.call(path, "cget", opt)
-                elif kind == "titre":
+                elif kind == "title":
                     current = real.call("wm", "title", path)
                 elif kind == "menu":
                     current = real.call(path, "entrycget", sub_id, opt)
-                elif kind == "onglet":
+                elif kind == "tab":
                     current = real.call(path, "tab", sub_id, opt)
-                elif kind == "entete":
+                elif kind == "header":
                     current = real.call(path, "heading", sub_id, opt)
-                elif kind == "canevas":
+                elif kind == "canvas":
                     current = real.call(path, "itemcget", sub_id, opt)
                 else:
                     continue
@@ -1483,15 +1483,15 @@ class _Proxy(object):
                 # Step 3: write the new translation with the matching set command.
                 if kind == "opt":
                     real.call(path, "configure", opt, new)
-                elif kind == "titre":
+                elif kind == "title":
                     real.call("wm", "title", path, new)
                 elif kind == "menu":
                     real.call(path, "entryconfigure", sub_id, opt, new)
-                elif kind == "onglet":
+                elif kind == "tab":
                     real.call(path, "tab", sub_id, opt, new)
-                elif kind == "entete":
+                elif kind == "header":
                     real.call(path, "heading", sub_id, opt, new)
-                elif kind == "canevas":
+                elif kind == "canvas":
                     real.call(path, "itemconfigure", sub_id, opt, new)
                 # Step 4: remember what is displayed now.
                 self._registry[key][1] = new
@@ -1552,7 +1552,7 @@ def _watch(root):
             # Step 4: save the missing texts collected so far (no-op if nothing new).
             _engine.write_missing()
         except Exception as e:
-            _log("surveillance : %r" % e)
+            _log("watchdog: %r" % e)
         # Step 5: schedule the next tick (fails silently once the window is destroyed).
         try:
             root.after(_PERIOD_MS, tic)
@@ -1561,7 +1561,7 @@ def _watch(root):
     try:
         root.after(_PERIOD_MS, tic)
     except Exception as e:
-        _log("after impossible : %r" % e)
+        _log("after failed: %r" % e)
 
 
 def _hook_up(tkinter):
@@ -1609,7 +1609,7 @@ def _hook_up(tkinter):
         return destroy_original(self)
 
     tkinter.Tk.destroy = destroy
-    _log("tkinter branche (outil=%s, couche %s)" % (_engine._tool_name(), LAYER_VERSION))
+    _log("tkinter hooked (tool=%s, layer %s)" % (_engine._tool_name(), LAYER_VERSION))
 
 
 class _Loader(object):
@@ -1729,7 +1729,7 @@ def _start():
         try:
             _install()
         except Exception as e:
-            _log("installation impossible : %r" % e)
+            _log("installation failed: %r" % e)
     _chain()
 
 

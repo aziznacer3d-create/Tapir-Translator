@@ -29,7 +29,7 @@ int wmain (int argc, wchar_t** argv)
 {
 	// Step 1
 	if (argc != 3) {
-		std::fprintf (stderr, "usage : Empaqueter <fichier.apx> <dossier>\n");
+		std::fprintf (stderr, "usage: Packer <file.apx> <folder>\n");
 		return 2;
 	}
 	// Step 2
@@ -38,9 +38,9 @@ int wmain (int argc, wchar_t** argv)
 	const bool ok = TT::Packer (argv[1], argv[2], hash, journal);
 	// Step 3
 	for (const std::wstring& l : journal)
-		std::printf ("Empaqueter : %s\n", TT::Utf8 (l).c_str ());
+		std::printf ("Packer: %s\n", TT::Utf8 (l).c_str ());
 	if (!ok) {
-		std::fprintf (stderr, "Empaqueter : ECHEC\n");
+		std::fprintf (stderr, "Packer: FAILED\n");
 		return 1;
 	}
 	return 0;

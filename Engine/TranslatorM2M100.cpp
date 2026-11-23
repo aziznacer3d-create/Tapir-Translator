@@ -55,12 +55,12 @@ public:
 			translator_ = std::make_unique<ctranslate2::Translator> (loader, config);
 			return true;
 		} catch (const std::exception& e) {
-			error = std::string ("chargement du modele : ") + e.what ();
+			error = std::string ("loading the model: ") + e.what ();
 			return false;
 		}
 	}
 
-	std::string Nom () const override { return "M2M100 418M int8 (CTranslate2, hors ligne)"; }
+	std::string Name () const override { return "M2M100 418M int8 (CTranslate2, offline)"; }
 
 	bool Supports (const std::string& language) const override { return ArchicadLanguage (language); }
 
@@ -153,7 +153,7 @@ public:
 					translatedTexts.push_back (text);
 				}
 			} catch (const std::exception& e) {
-				error = std::string ("traduction : ") + e.what ();
+				error = std::string ("translation: ") + e.what ();
 				return false;
 			}
 		}

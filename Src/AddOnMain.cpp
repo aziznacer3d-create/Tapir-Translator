@@ -241,9 +241,9 @@ void TranslateMenus (int language)
 			if (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &text) != NoError)
 				++errors;
 		}
-		trace += " " + std::to_string (ref.menuResID) + ":items_erreurs=" + std::to_string (errors);
+		trace += " " + std::to_string (ref.menuResID) + ":item_errors=" + std::to_string (errors);
 	}
-	Log (std::string ("menus renommes en ") + TT::InterfaceCode (language) + " :" + trace);
+	Log (std::string ("menus renamed to ") + TT::InterfaceCode (language) + " :" + trace);
 	// Step 3: renaming may reset the item flags: put the check marks back.
 	RefreshCheckMarks ();
 }
@@ -467,14 +467,14 @@ void Watch ()
 			restarts = 0;
 		}
 		if (restarts >= 20) {
-			Log ("moteur arrete 20 fois en une heure : surveillance suspendue (Options > Traduction en ligne pour relancer)");
+			Log ("engine stopped 20 times in one hour: watchdog suspended (Options > Online translation to restart)");
 			return;
 		}
 		// Step 5: back-off delay: 30 s if the port is taken (code 2), otherwise 1 s, 2 s, 3 s...
 		// growing with each restart. The wait is sliced in 250 ms steps so that StopEngine
 		// (which clears g_engineWanted and joins this thread) is never blocked for long.
 		const DWORD wait = code == 2 ? 30000 : static_cast<DWORD> (1000 * (1 + restarts));
-		Log ("moteur arrete (code " + std::to_string (code) + ") : relance dans " + std::to_string (wait / 1000) + " s");
+		Log ("engine stopped (code " + std::to_string (code) + "): restart in " + std::to_string (wait / 1000) + " s");
 		for (DWORD t = 0; t < wait && g_engineWanted; t += 250)
 			Sleep (250);
 		if (!g_engineWanted)
@@ -483,9 +483,9 @@ void Watch ()
 		std::lock_guard<std::mutex> lock (g_lock);
 		DWORD error = 0;
 		if (StartProcess (error))
-			Log ("moteur relance");
+			Log ("engine restarted");
 		else
-			Log ("relance du moteur impossible (erreur Windows " + std::to_string (error) + ")");
+			Log ("engine restart failed (Windows error " + std::to_string (error) + ")");
 		++restarts;
 	}
 }
@@ -888,7 +888,7 @@ GSErrCode Initialize (void)
 	for (const short menu : { kMenuInput (), kMenuOutput (), kMenuTranslator (), kMenuCommands (), kMenuInterface () }) {
 		const GSErrCode e = ACAPI_MenuItem_InstallMenuHandler (menu, MenuCommandHandler);
 		if (e != NoError) {
-			Report (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
+			Report (GS::UniString ("ERROR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
 					 ") = " + GS::ValueToUniString (static_cast<Int32> (e)));
 			err = e;
 		}
@@ -897,7 +897,7 @@ GSErrCode Initialize (void)
 	Start ();
 	// Step 2b: trace of the menu registration (log.txt only): ArchiCAD language code, menu
 	// language index, and the error code returned for each menu (0 = registered).
-	Log ("menus : ArchiCAD " + g_archicadVersion + ", langue " + TT::InterfaceCode (g_menuLanguage) + ", RegisterMenu" + g_menuTrace);
+	Log ("menus : ArchiCAD " + g_archicadVersion + ", language " + TT::InterfaceCode (g_menuLanguage) + ", RegisterMenu" + g_menuTrace);
 	if (g_menuError != NoError)
 		Report (GS::UniString ("ERROR ACAPI_MenuItem_RegisterMenu (") + GS::ValueToUniString (static_cast<Int32> (g_failedMenu)) +
 				 ") = " + GS::ValueToUniString (static_cast<Int32> (g_menuError)));
@@ -918,7 +918,7 @@ GSErrCode FreeData (void)
 {
 	// Traced in log.txt: an unload outside ArchiCAD's exit means the add-on lost its
 	// "keep in memory" state (the engine stops with it).
-	Log ("add-on decharge (FreeData)");
+	Log ("add-on unloaded (FreeData)");
 	StopEngine ();
 	return NoError;
 }

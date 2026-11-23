@@ -39,7 +39,7 @@ public:
 	virtual ~Translator () = default;
 
 	// Human-readable name, used in the engine's log messages and error answers
-	virtual std::string Nom () const = 0;
+	virtual std::string Name () const = 0;
 
 	// True if the language is supported (codes of TT::Languages; every current
 	// implementation accepts the 20 ArchicadLanguages)

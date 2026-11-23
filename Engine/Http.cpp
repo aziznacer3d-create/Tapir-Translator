@@ -41,16 +41,16 @@ std::wstring Wide (const std::string& s)
 std::string WinHttpError (const char* step_)
 {
 	const DWORD code = GetLastError ();
-	const char* sens = "";
+	const char* meaning = "";
 	switch (code) {
-		case ERROR_WINHTTP_TIMEOUT:					sens = " (delai depasse)"; break;
-		case ERROR_WINHTTP_NAME_NOT_RESOLVED:		sens = " (nom de serveur introuvable : pas d'Internet ?)"; break;
-		case ERROR_WINHTTP_CANNOT_CONNECT:			sens = " (connexion impossible)"; break;
-		case ERROR_WINHTTP_SECURE_FAILURE:			sens = " (certificat refuse)"; break;
-		case ERROR_WINHTTP_CONNECTION_ERROR:		sens = " (connexion coupee)"; break;
+		case ERROR_WINHTTP_TIMEOUT:					meaning = " (timeout)"; break;
+		case ERROR_WINHTTP_NAME_NOT_RESOLVED:		meaning = " (server name not found: no Internet?)"; break;
+		case ERROR_WINHTTP_CANNOT_CONNECT:			meaning = " (cannot connect)"; break;
+		case ERROR_WINHTTP_SECURE_FAILURE:			meaning = " (certificate refused)"; break;
+		case ERROR_WINHTTP_CONNECTION_ERROR:		meaning = " (connection lost)"; break;
 		default: break;
 	}
-	return std::string (step_) + " : erreur WinHTTP " + std::to_string (code) + sens;
+	return std::string (step_) + ": WinHTTP error " + std::to_string (code) + meaning;
 }
 
 // RAII wrapper for a WinHTTP handle: closed automatically on every return path.
@@ -82,7 +82,7 @@ Response Request (const std::string& method, const std::string& url, const std::
 	parts.lpszExtraInfo = query;
 	parts.dwExtraInfoLength = 8192;
 	if (!WinHttpCrackUrl (urlW.c_str (), static_cast<DWORD> (urlW.size ()), 0, &parts)) {
-		r.error = WinHttpError ("adresse illisible");
+		r.error = WinHttpError ("unreadable address");
 		return r;
 	}
 
@@ -122,7 +122,7 @@ Response Request (const std::string& method, const std::string& url, const std::
 							 body.empty () ? WINHTTP_NO_REQUEST_DATA : const_cast<char*> (body.data ()),
 							 static_cast<DWORD> (body.size ()), static_cast<DWORD> (body.size ()), 0) ||
 		!WinHttpReceiveResponse (request.h, nullptr)) {
-		r.error = WinHttpError ("envoi de la requete");
+		r.error = WinHttpError ("sending the request");
 		return r;
 	}
 	// Step 6: HTTP status code, as a number

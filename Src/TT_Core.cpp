@@ -21,13 +21,13 @@
 
 namespace TT {
 
-const char* const AddOnVersion = "0.7.5";
+const char* const AddOnVersion = "0.8.0";
 
 // Same order as the items of the input / output language menus (MenuBase + 0 / + 1, generated
 // into RFIX/Tapir_TranslatorMenus.grc) and as the columns of dictionaries/_common.json.
 // Entry 0 (empty code) is the "automatic detection" / "no translation" / "as ArchiCAD" item.
 const Language Languages[] = {
-	{ "",	"aucune" },
+	{ "",	"none" },
 	{ "fr",	"Français" },
 	{ "en",	"English" },
 	{ "de",	"Deutsch" },
@@ -53,11 +53,11 @@ const int LanguageCount = static_cast<int> (sizeof (Languages) / sizeof (Languag
 
 // Online translators: code, display name, what keys.json must contain (in menu order).
 const Provider Providers[] = {
-	{ "deepl",			"DeepL",					"cle (compte DeepL API Free)" },
-	{ "microsoft",		"Microsoft Translator",		"cle + region (Azure, niveau gratuit F0)" },
-	{ "google",			"Google Cloud Translation",	"cle (Google Cloud)" },
-	{ "mymemory",		"MyMemory",					"rien (e-mail facultatif pour un quota plus grand)" },
-	{ "libretranslate",	"LibreTranslate",			"adresse du serveur (+ cle si demandee)" },
+	{ "deepl",			"DeepL",					"key (DeepL API Free account)" },
+	{ "microsoft",		"Microsoft Translator",		"key + region (Azure, free tier F0)" },
+	{ "google",			"Google Cloud Translation",	"key (Google Cloud)" },
+	{ "mymemory",		"MyMemory",					"nothing (optional e-mail for a larger quota)" },
+	{ "libretranslate",	"LibreTranslate",			"server address (+ key if required)" },
 };
 const int ProviderCount = static_cast<int> (sizeof (Providers) / sizeof (Providers[0]));
 
@@ -116,7 +116,7 @@ static std::wstring ErrorMessage (DWORD code)
 	wchar_t* buffer = nullptr;
 	const DWORD n = FormatMessageW (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 									nullptr, code, 0, reinterpret_cast<wchar_t*> (&buffer), 0, nullptr);
-	std::wstring res = L"erreur Windows " + std::to_wstring (static_cast<unsigned long> (code));
+	std::wstring res = L"Windows error " + std::to_wstring (static_cast<unsigned long> (code));
 	if (n > 0 && buffer != nullptr) {
 		std::wstring msg (buffer, n);
 		while (!msg.empty () && (msg.back () == L'\n' || msg.back () == L'\r' || msg.back () == L' '))
@@ -241,7 +241,7 @@ bool WriteWholeFile (const std::wstring& path, const std::string& content, std::
 	const std::wstring tmp = path + L".tmp";
 	HANDLE f = CreateFileW (tmp.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (f == INVALID_HANDLE_VALUE) {
-		error = L"creation de " + tmp + L" impossible : " + ErrorMessage (GetLastError ());
+		error = L"cannot create " + tmp + L": " + ErrorMessage (GetLastError ());
 		return false;
 	}
 	size_t written = 0;
@@ -260,7 +260,7 @@ bool WriteWholeFile (const std::wstring& path, const std::string& content, std::
 	const DWORD writeCode = ok ? 0 : GetLastError ();
 	CloseHandle (f);
 	if (!ok) {
-		error = L"ecriture de " + tmp + L" impossible : " + ErrorMessage (writeCode);
+		error = L"cannot write " + tmp + L": " + ErrorMessage (writeCode);
 		DeleteFileW (tmp.c_str ());
 		return false;
 	}
@@ -271,7 +271,7 @@ bool WriteWholeFile (const std::wstring& path, const std::string& content, std::
 			return true;
 		Sleep (20);
 	}
-	error = L"remplacement de " + path + L" impossible : " + ErrorMessage (GetLastError ());
+	error = L"cannot replace " + path + L": " + ErrorMessage (GetLastError ());
 	DeleteFileW (tmp.c_str ());
 	return false;
 }
@@ -396,7 +396,7 @@ bool ExtractLayer (const std::wstring& root, std::vector<std::wstring>& journal)
 	const std::wstring dictionaries = Join (root, L"dictionaries");
 	for (const std::wstring& d : { root, layer, dictionaries, Join (root, L"missing") }) {
 		if (!CreateFolder (d)) {
-			journal.push_back (L"dossier impossible a creer : " + d);
+			journal.push_back (L"cannot create folder: " + d);
 			ok = false;
 		}
 	}
@@ -410,9 +410,9 @@ bool ExtractLayer (const std::wstring& root, std::vector<std::wstring>& journal)
 	const std::string source (reinterpret_cast<const char*> (Embedded::Layer), Embedded::LayerSize);
 	std::string current;
 	if (ReadWholeFile (sitecustomize, current) && current == source) {
-		journal.push_back (L"couche a jour : " + sitecustomize);
+		journal.push_back (L"layer up to date: " + sitecustomize);
 	} else if (WriteWholeFile (sitecustomize, source, error)) {
-		journal.push_back (L"couche ecrite : " + sitecustomize);
+		journal.push_back (L"layer written: " + sitecustomize);
 	} else {
 		journal.push_back (error);
 		ok = false;
@@ -424,9 +424,9 @@ bool ExtractLayer (const std::wstring& root, std::vector<std::wstring>& journal)
 	const std::string content (reinterpret_cast<const char*> (Embedded::Common), Embedded::CommonSize);
 	std::string existing;
 	if (ReadWholeFile (common, existing) && existing == content) {
-		journal.push_back (L"dictionnaire commun a jour : " + common);
+		journal.push_back (L"common dictionary up to date: " + common);
 	} else if (WriteWholeFile (common, content, error)) {
-		journal.push_back (L"dictionnaire commun ecrit : " + common);
+		journal.push_back (L"common dictionary written: " + common);
 	} else {
 		journal.push_back (error);
 		ok = false;
@@ -437,20 +437,20 @@ bool ExtractLayer (const std::wstring& root, std::vector<std::wstring>& journal)
 	if (!FileExists (user)) {
 		const std::string model =
 			"{\n"
-			"  \"_explanation\": \"Vos traductions communes a tous les scripts. Jamais modifie par l'add-on ; l'emporte sur _common.json. Une notion par ligne, une colonne par langue (codes : fr en de es pt it hu cs pl ru uk el tr nl sv no fi ja ko zh).\",\n"
+			"  \"_explanation\": \"Your translations shared by all scripts. Never modified by the add-on; overrides _common.json. One notion per row, one column per language (codes: fr en de es pt it hu cs pl ru uk el tr nl sv no fi ja ko zh).\",\n"
 			"  \"format\": 2,\n"
 			"  \"terms\": [\n"
 			"    {\"en\": \"Example\", \"fr\": \"Exemple\", \"de\": \"Beispiel\"}\n"
 			"  ]\n"
 			"}\n";
 		if (WriteWholeFile (user, model, error))
-			journal.push_back (L"dictionnaire personnel cree : " + user);
+			journal.push_back (L"user dictionary created: " + user);
 	}
 	// Step 5: templates of keys.json and corrections.json, only if missing (also non-fatal).
 	if (!FileExists (KeysPath (root)) && CreateKeysTemplate (root, error))
-		journal.push_back (L"fichier des cles cree : " + KeysPath (root));
+		journal.push_back (L"keys file created: " + KeysPath (root));
 	if (!FileExists (CorrectionsPath (root)) && CreateCorrectionsTemplate (root, error))
-		journal.push_back (L"fichier des corrections cree : " + CorrectionsPath (root));
+		journal.push_back (L"corrections file created: " + CorrectionsPath (root));
 	return ok;
 }
 
@@ -539,7 +539,7 @@ std::wstring KeysPath (const std::wstring& root)
 }
 
 
-// Creates keys.json with one empty section per translator, each with a "_or" hint telling
+// Creates keys.json with one empty section per translator, each with a "_where" hint telling
 // where to get the key. Returns true at once if the file already exists (never overwritten,
 // it holds the user's keys).
 bool CreateKeysTemplate (const std::wstring& root, std::wstring& error)
@@ -549,26 +549,26 @@ bool CreateKeysTemplate (const std::wstring& root, std::wstring& error)
 		return true;
 	const std::string model =
 		"{\n"
-		"  \"_explanation\": \"Cles des traducteurs en ligne de Tapir Translator. Ce fichier reste sur ce poste : il n'est jamais envoye ni lu par les scripts. Enregistrez-le, la cle sert des la traduction suivante.\",\n"
+		"  \"_explanation\": \"Keys of the Tapir Translator online translators. This file stays on this computer: it is never sent, nor read by the scripts. Save it: the key is used from the next translation on.\",\n"
 		"  \"deepl\": {\n"
-		"    \"_or\": \"https://www.deepl.com/pro-api : offre DeepL API Free (une cle se termine par :fx)\",\n"
+		"    \"_where\": \"https://www.deepl.com/pro-api: DeepL API Free plan (the key ends with :fx)\",\n"
 		"    \"key\": \"\"\n"
 		"  },\n"
 		"  \"microsoft\": {\n"
-		"    \"_or\": \"portail Azure : ressource Translator, niveau F0 (gratuit) ; region = celle de la ressource, ex. westeurope\",\n"
+		"    \"_where\": \"Azure portal: Translator resource, F0 tier (free); region = the resource's region, e.g. westeurope\",\n"
 		"    \"key\": \"\",\n"
 		"    \"region\": \"\"\n"
 		"  },\n"
 		"  \"google\": {\n"
-		"    \"_or\": \"console Google Cloud : API Cloud Translation activee, cle API\",\n"
+		"    \"_where\": \"Google Cloud console: Cloud Translation API enabled, API key\",\n"
 		"    \"key\": \"\"\n"
 		"  },\n"
 		"  \"mymemory\": {\n"
-		"    \"_or\": \"aucune cle ; une adresse e-mail augmente le quota quotidien gratuit\",\n"
+		"    \"_where\": \"no key; an e-mail address raises the free daily quota\",\n"
 		"    \"email\": \"\"\n"
 		"  },\n"
 		"  \"libretranslate\": {\n"
-		"    \"_or\": \"adresse d'un serveur LibreTranslate (le votre ou une instance publique) et sa cle si elle en demande une\",\n"
+		"    \"_where\": \"address of a LibreTranslate server (your own or a public instance) and its key if it requires one\",\n"
 		"    \"url\": \"\",\n"
 		"    \"key\": \"\"\n"
 		"  }\n"
@@ -595,13 +595,13 @@ bool CreateCorrectionsTemplate (const std::wstring& root, std::wstring& error)
 	if (FileExists (path))
 		return true;
 	const std::string model = std::string (R"JSON({
-  "_explanation": "Corrections de termes appliquees aux traductions EN LIGNE (pas aux dictionnaires), langue de sortie par langue de sortie. Enregistrez : les fenetres ouvertes et le cache suivent aussitot. Une regle : source = mot(s) de l'original qui declenchent la regle (facultatif) ; mauvais -> correct (en fr, es, pt le pluriel en -s suit tout seul) ou remplacer = { mauvais: correct, ... }. Les expressions les plus longues passent d'abord : mettez-y les accords ('toutes les histoires' -> 'tous les etages'). Pour corriger une phrase entiere, utilisez plutot dictionnaires\\_user.json.",
+  "_explanation": "Term corrections applied to ONLINE translations (not to dictionaries), per output language. Save: open windows and the cache follow at once. A rule: source = word(s) of the original that trigger the rule (optional); wrong -> correct (in fr, es, pt the -s plural follows by itself) or replace = { wrong: correct, ... }. Longer expressions are applied first: put agreements there ('toutes les histoires' -> 'tous les etages'). To correct a whole sentence, use dictionaries\\_user.json instead.",
   "fr": [
     {"source": ["story", "stories"], "replace": {
       "toutes les histoires": "tous les étages", "les histoires": "les étages", "une histoire": "un étage",
       "cette histoire": "cet étage", "nouvelle histoire": "nouvel étage", "histoire actuelle": "étage actuel",
       "histoire sélectionnée": "étage sélectionné", "histoires sélectionnées": "étages sélectionnés",
-      "histoire de la maison": "étage de référence", "histoire d'original": "étage de référence",
+      "histoire de la maison": "étage de référence", "histoire d'origine": "étage de référence",
       "histoires": "étages", "histoire": "étage"}},
     {"source": ["slab", "slabs"], "replace": {"plaques": "dalles", "plaque": "dalle"}},
     {"source": ["beam", "beams"], "replace": {
@@ -609,7 +609,7 @@ bool CreateCorrectionsTemplate (const std::wstring& root, std::wstring& error)
       "faisceaux": "poutres", "faisceau": "poutre"}},
     {"source": ["layer", "layers"], "replace": {
       "une couche": "un calque", "la couche": "le calque", "cette couche": "ce calque",
-      "toutes les couches": "tous les calques", "couches": "calques", "layer": "calque"}},
+      "toutes les couches": "tous les calques", "couches": "calques", "couche": "calque"}},
     {"source": ["pen", "pens"], "replace": {"plumes": "stylos", "plume": "stylo", "stylets": "stylos", "stylet": "stylo"}},
     {"source": ["fill", "fills"], "replace": {"remplissages": "hachures", "remplissage": "hachure"}},
     {"source": ["railing", "railings"], "replace": {"rampes": "garde-corps", "rampe": "garde-corps"}},
@@ -802,7 +802,7 @@ void MigrateOldData (const std::wstring& root, std::vector<std::wstring>& journa
 	MigrateJsonFile (Join (root, L"settings.json"),
 					 { { "entree", "input" }, { "langue", "output" }, { "collecte", "collect" }, { "moteur", "online" },
 					   { "fournisseur", "provider" }, { "ecrit_par", "written_by" } }, journal);
-	MigrateJsonFile (Join (root, L"keys.json"), { { "cle", "key" }, { "_explication", "_explanation" }, { "_ou", "_or" } }, journal);
+	MigrateJsonFile (Join (root, L"keys.json"), { { "cle", "key" }, { "_explication", "_explanation" }, { "_ou", "_where" } }, journal);
 	MigrateJsonFile (Join (root, L"corrections.json"),
 					 { { "mauvais", "wrong" }, { "remplacer", "replace" }, { "_explication", "_explanation" } }, journal);
 	// Dictionaries and missing texts share the dictionary keys (format 1 and format 2).

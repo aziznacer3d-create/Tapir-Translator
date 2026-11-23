@@ -18,7 +18,7 @@ What it reports
 ---------------
 Every 150 ms it writes the state of its interface to stdout, but only when it changed:
   V|<key>|<text displayed by Tk>|<text seen by the script>
-  STATUS_END
+  STATE_END
 The displayed text is read directly in the real Tcl interpreter (bypassing the layer):
 it is what the user sees on screen. The seen text goes through the normal tkinter API
 (and therefore through the layer): it is what the script logic receives, and it must
@@ -81,7 +81,7 @@ lbl_unknown.pack()
 lbl_path = tk.Label(root, text="C:\\Projets\\plan.pln")
 lbl_path.pack()
 lbl_code = tk.Label(root, text="MUR-01")
-# Sentence where an Archicad term is mistranslated by online translators ("story" -> "story_");
+# Sentence where an Archicad term is mistranslated by online translators ("story" -> "histoire");
 # used to test the term corrections (corrections.json).
 lbl_stories = tk.Label(root, text=t("Tous les étages"))
 lbl_stories.pack()
@@ -136,25 +136,25 @@ def real():
 def state():
     r = real()
     e = []
-    e.append(("titre", r.call("wm", "title", "."), root.title()))
-    e.append(("statut", r.globalgetvar(str(status)), status.get()))
-    for key, w in (("fermer", btn_close), ("nom", lbl_name), ("murs", cb_walls), ("cadre", frame_),
-                   ("multi", lbl_multi), ("modele", lbl_pattern), ("inconnu", lbl_unknown),
-                   ("chemin", lbl_path), ("code", lbl_code), ("etages", lbl_stories)):
+    e.append(("title", r.call("wm", "title", "."), root.title()))
+    e.append(("status", r.globalgetvar(str(status)), status.get()))
+    for key, w in (("close", btn_close), ("name", lbl_name), ("walls", cb_walls), ("frame", frame_),
+                   ("multi", lbl_multi), ("pattern", lbl_pattern), ("unknown", lbl_unknown),
+                   ("path", lbl_path), ("code", lbl_code), ("stories", lbl_stories)):
         e.append((key, r.call(str(w), "cget", "-text"), w.cget("text")))
-    e.append(("menu_fichier", r.call(str(bar), "entrycget", 0, "-label"), bar.entrycget(0, "label")))
-    e.append(("menu_ouvrir", r.call(str(menu_file), "entrycget", 0, "-label"), menu_file.entrycget(0, "label")))
-    e.append(("menu_quitter", r.call(str(menu_file), "entrycget", 2, "-label"), menu_file.entrycget(2, "label")))
-    e.append(("onglet", r.call(str(notebook_), "tab", 0, "-text"), notebook_.tab(0, "text")))
-    e.append(("entete", r.call(str(tree), "heading", "#0", "-text"), tree.heading("#0", "text")))
-    e.append(("ligne_arbre", r.call(str(tree), "item", line, "-text"), tree.item(line, "text")))
-    e.append(("canevas", r.call(str(canvas_), "itemcget", canvas_text, "-text"), canvas_.itemcget(canvas_text, "text")))
+    e.append(("menu_file", r.call(str(bar), "entrycget", 0, "-label"), bar.entrycget(0, "label")))
+    e.append(("menu_open", r.call(str(menu_file), "entrycget", 0, "-label"), menu_file.entrycget(0, "label")))
+    e.append(("menu_quit", r.call(str(menu_file), "entrycget", 2, "-label"), menu_file.entrycget(2, "label")))
+    e.append(("tab", r.call(str(notebook_), "tab", 0, "-text"), notebook_.tab(0, "text")))
+    e.append(("heading", r.call(str(tree), "heading", "#0", "-text"), tree.heading("#0", "text")))
+    e.append(("tree_row", r.call(str(tree), "item", line, "-text"), tree.item(line, "text")))
+    e.append(("canvas", r.call(str(canvas_), "itemcget", canvas_text, "-text"), canvas_.itemcget(canvas_text, "text")))
     # For the Combobox, "displayed" = its list of values joined by spaces, "seen" = current value.
     e.append(("combo", " ".join(str(v) for v in combo.cget("values")), combo.get()))
-    e.append(("saisie", entry.get(), entry.get()))
+    e.append(("entry", entry.get(), entry.get()))
     # The script logic compares original texts: it must keep working while translated
     # ("ok" when the comparisons still succeed, "BROKEN" otherwise).
-    e.append(("logique", "ok" if btn_close.cget("text") == t("Fermer") and status.get() in (t("Prêt"), t("Terminé")) else "CASSEE", ""))
+    e.append(("logic", "ok" if btn_close.cget("text") == t("Fermer") and status.get() in (t("Prêt"), t("Terminé")) else "BROKEN", ""))
     return e
 
 
@@ -164,9 +164,9 @@ last_command = ""
 
 
 # Periodic tick (every 150 ms):
-#   1. read command_.txt and execute the command if it changed ("caps" or "end_");
+#   1. read command.txt and execute the command if it changed ("update" or "end");
 #   2. build the interface state;
-#   3. if it differs from the last one, write it as V|... lines followed by STATUS_END;
+#   3. if it differs from the last one, write it as V|... lines followed by STATE_END;
 #   4. schedule the next tick.
 def tic():
     global last, last_command
@@ -177,10 +177,10 @@ def tic():
         command_ = ""
     if command_ != last_command:
         last_command = command_
-        if command_ == "maj":
+        if command_ == "update":
             status.set(t("Terminé"))
             lbl_name.config(text="Valeur")
-        elif command_ == "fin":
+        elif command_ == "end":
             root.destroy()
             return
     e = state()
@@ -189,7 +189,7 @@ def tic():
         lines = []
         for key, displayed, seen in e:
             lines.append("V|%s|%s|%s" % (key, str(displayed).replace("\n", "\\n"), str(seen).replace("\n", "\\n")))
-        lines.append("FIN_ETAT")
+        lines.append("STATE_END")
         sys.stdout.write("\n".join(lines) + "\n")
         sys.stdout.flush()
     root.after(150, tic)
@@ -200,4 +200,4 @@ print("LAYER|%s" % ("active" if hasattr(root.tk, "_real") else "missing"), flush
 root.after(100, tic)
 root.after(60000, root.destroy)   # safety: never run for more than one minute
 root.mainloop()
-print("FIN_OUTIL", flush=True)
+print("TOOL_END", flush=True)

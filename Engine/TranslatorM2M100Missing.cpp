@@ -14,6 +14,6 @@
 // "model local unavailable" and the engine keeps running.
 std::unique_ptr<Translator> CreateTranslatorM2M100 (const std::string& /*folder*/, std::string& error)
 {
-	error = "moteur compile sans CTranslate2 (voir README, section Moteur)";
+	error = "engine built without CTranslate2 (see README, Engine section)";
 	return nullptr;
 }

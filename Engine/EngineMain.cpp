@@ -41,7 +41,7 @@
 //   --show-quota 0|1    development: only show the quota window and exit
 //   --save-email <keys.json> <email>   test bench: write the e-mail and exit
 //
-//   On success the engine prints "PRET <port>" on stdout once it listens.
+//   On success the engine prints "READY <port>" on stdout once it listens.
 // *****************************************************************************
 
 #if !defined (WIN32_LEAN_AND_MEAN)
@@ -69,7 +69,7 @@
 namespace {
 
 // Engine version, reported by GET /status.
-const char* const kVersion = "0.7.5";
+const char* const kVersion = "0.8.0";
 // Path of the log file (--log); empty = no logging.
 std::string g_log;
 
@@ -91,7 +91,7 @@ void Log (const std::string& line)
 	std::tm tm = {};
 	localtime_s (&tm, &t);
 	std::strftime (date, sizeof (date), "%Y-%m-%d %H:%M:%S", &tm);
-	std::fprintf (f, "%s [moteur %lu] %s\n", date, static_cast<unsigned long> (GetCurrentProcessId ()), line.c_str ());
+	std::fprintf (f, "%s [engine %lu] %s\n", date, static_cast<unsigned long> (GetCurrentProcessId ()), line.c_str ());
 	std::fclose (f);
 }
 
@@ -219,7 +219,7 @@ Json::Value ReadKeys (const std::string& path)
 		content.erase (0, 3);
 	// Step 3: parse
 	if (!Json::Reader (content).Read (v))
-		Log ("keys.json illisible (JSON invalide) : " + path);
+		Log ("keys.json unreadable (invalid JSON): " + path);
 	return v;
 }
 
@@ -283,11 +283,11 @@ void ReportMyMemoryQuota (Context& c)
 	const Json::Value* m = keys.Field ("mymemory");
 	std::string email = m != nullptr ? m->Text ("email") : std::string ();
 	const bool withEmail = !email.empty ();
-	Log (std::string ("quota MyMemory atteint ") + (withEmail ? "(meme avec l'e-mail : environ 50 000 caracteres/jour)"
-																   : "(anonyme : environ 5 000 caracteres/jour)"));
+	Log (std::string ("MyMemory quota reached ") + (withEmail ? "(even with the e-mail: about 50,000 characters/day)"
+																   : "(anonymous: about 5,000 characters/day)"));
 	// Step 3: test bench mode: no window, but the same one-hour silence
 	if (c.noDialog) {
-		Log ("fenetre de saisie de l'e-mail desactivee (--no-dialog)");
+		Log ("e-mail entry window disabled (--no-dialog)");
 		c.laterUntil = now + 3600000ull;
 		return;
 	}
@@ -300,12 +300,12 @@ void ReportMyMemoryQuota (Context& c)
 		// request on); otherwise do not ask again for one hour
 		if (r == QuotaAnswer::Saved) {
 			if (SaveEmail (c.keys, email))
-				Log ("e-mail MyMemory enregistre dans keys.json : quota porte a environ 50 000 caracteres/jour");
+				Log ("MyMemory e-mail saved in keys.json: quota raised to about 50,000 characters/day");
 			else
-				Log ("ERREUR enregistrement de l'e-mail dans " + c.keys);
+				Log ("ERROR saving the e-mail in " + c.keys);
 		} else {
 			c.laterUntil = GetTickCount64 () + 3600000ull;
-			Log ("fenetre du quota MyMemory fermee sans e-mail : pas de nouvelle question pendant 1 h");
+			Log ("MyMemory quota window closed without an e-mail: no new question for 1 h");
 		}
 		c.dialogOpen = false;
 	}).detach ();
@@ -338,7 +338,7 @@ bool HandleRequest (SOCKET s, Context& c)
 	// Step 1: read the request
 	std::string method, path, body;
 	if (!ReadRequest (s, method, path, body)) {
-		Respond (s, 400, "{\"error\": \"requete illisible\"}");
+		Respond (s, 400, "{\"error\": \"unreadable request\"}");
 		return true;
 	}
 	// Step 2: routing - /status and /stop_ are answered at once
@@ -351,7 +351,7 @@ bool HandleRequest (SOCKET s, Context& c)
 		return false;
 	}
 	if (method != "POST" || path != "/translate") {
-		Respond (s, 404, "{\"error\": \"chemin inconnu\"}");
+		Respond (s, 404, "{\"error\": \"unknown path\"}");
 		return true;
 	}
 
@@ -360,7 +360,7 @@ bool HandleRequest (SOCKET s, Context& c)
 	// "texts" must be an array)
 	Json::Value request;
 	if (!Json::Reader (body).Read (request) || request.kind != Json::Value::Object) {
-		Respond (s, 400, "{\"error\": \"JSON illisible\"}");
+		Respond (s, 400, "{\"error\": \"unreadable JSON\"}");
 		return true;
 	}
 	const std::string source = request.Text ("source");
@@ -369,7 +369,7 @@ bool HandleRequest (SOCKET s, Context& c)
 	const Json::Value* texts = request.Field ("texts");
 	if (target.empty () || !ArchicadLanguage (target) || (!source.empty () && !ArchicadLanguage (source)) ||
 		texts == nullptr || texts->kind != Json::Value::Array) {
-		Respond (s, 400, "{\"error\": \"langue non prise en charge ou textes absents\"}");
+		Respond (s, 400, "{\"error\": \"unsupported language or missing texts\"}");
 		return true;
 	}
 
@@ -386,7 +386,7 @@ bool HandleRequest (SOCKET s, Context& c)
 		translator = online.get ();
 	}
 	if (translator == nullptr) {
-		Respond (s, 400, "{\"error\": " + Json::String ("traducteur inconnu ou indisponible : " + provider) + "}");
+		Respond (s, 400, "{\"error\": " + Json::String ("unknown or unavailable translator: " + provider) + "}");
 		return true;
 	}
 
@@ -404,14 +404,14 @@ bool HandleRequest (SOCKET s, Context& c)
 		// Failure -> 503: the layer keeps the original text and will retry
 		// (network, quota, key...). A MyMemory quota error also opens the
 		// e-mail window.
-		Log ("ERREUR " + translator->Nom () + " " + (source.empty () ? "auto" : source) + " -> " + target + " : " + error);
+		Log ("ERROR " + translator->Name () + " " + (source.empty () ? "auto" : source) + " -> " + target + " : " + error);
 		if (provider == "mymemory" && (error.find ("MYMEMORY WARNING") != std::string::npos || error.find ("HTTP 429") != std::string::npos))
 			ReportMyMemoryQuota (c);
-		Respond (s, 503, "{\"error\": " + Json::String (translator->Nom () + " : " + (error.empty () ? "traduction impossible" : error)) + "}");
+		Respond (s, 503, "{\"error\": " + Json::String (translator->Name () + " : " + (error.empty () ? "translation failed" : error)) + "}");
 		return true;
 	}
-	Log (translator->Nom () + " : " + std::to_string (input.size ()) + " texte(s) " + (source.empty () ? "auto" : source) +
-			 " -> " + target + " en " + std::to_string (GetTickCount () - start) + " ms");
+	Log (translator->Name () + " : " + std::to_string (input.size ()) + " text(s) " + (source.empty () ? "auto" : source) +
+			 " -> " + target + " in " + std::to_string (GetTickCount () - start) + " ms");
 	// Step 7: answer {"translations": [...]} in the same order as the request
 	std::string json = "{\"translations\": [";
 	for (size_t i = 0; i < output.size (); ++i)
@@ -457,7 +457,7 @@ int main (int argc, char** argv)
 		else if (a == "--show-quota" && i + 1 < argc) {
 			// Development: shows the MyMemory quota window (0 = anonymous, 1 = with e-mail)
 			// and returns the answer (QuotaAnswer) as the exit code
-			std::string email = "moi@exemple.fr";
+			std::string email = "me@example.com";
 			return static_cast<int> (AskMyMemoryEmail (email, std::atoi (argv[i + 1]) != 0, context.interfaceLanguage));
 		}
 		else if (a == "--save-email" && i + 2 < argc) {
@@ -477,7 +477,7 @@ int main (int argc, char** argv)
 		std::string error;
 		context.local = CreateTranslatorM2M100 (model, error);
 		if (context.local == nullptr)
-			Log ("modele local indisponible : " + error);
+			Log ("local model unavailable: " + error);
 	}
 	// Step 3: stop together with ArchiCAD - a detached thread waits for the
 	// parent process handle to be signalled, then ends the whole process
@@ -486,7 +486,7 @@ int main (int argc, char** argv)
 		if (h != nullptr) {
 			std::thread ([h] () {
 				WaitForSingleObject (h, INFINITE);
-				Log ("ArchiCAD ferme : arret");
+				Log ("ArchiCAD closed: stopping");
 				ExitProcess (0);
 			}).detach ();
 		}
@@ -505,13 +505,13 @@ int main (int argc, char** argv)
 	BOOL exclusive = TRUE;
 	setsockopt (listener, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*> (&exclusive), sizeof (exclusive));
 	if (bind (listener, reinterpret_cast<sockaddr*> (&address), sizeof (address)) != 0 || listen (listener, 16) != 0) {
-		Log ("port " + std::to_string (port) + " deja pris : un moteur tourne sans doute deja");
+		Log ("port " + std::to_string (port) + " already in use: an engine is probably already running");
 		closesocket (listener);
 		WSACleanup ();
 		return 2;
 	}
-	// Ready: log it and tell the launcher on stdout ("PRET <port>")
-	Log ("pret sur 127.0.0.1:" + std::to_string (port) + " (traducteurs en ligne, cles : " + (context.keys.empty () ? std::string ("aucune") : context.keys) + ")");
+	// Ready: log it and tell the launcher on stdout ("READY <port>")
+	Log ("ready on 127.0.0.1:" + std::to_string (port) + " (online translators, keys: " + (context.keys.empty () ? std::string ("none") : context.keys) + ")");
 	std::printf ("READY %d\n", port);
 	std::fflush (stdout);
 
@@ -530,7 +530,7 @@ int main (int argc, char** argv)
 			break;
 	}
 	// POST /stop_ received: clean shutdown
-	Log ("arret demande");
+	Log ("stop requested");
 	closesocket (listener);
 	WSACleanup ();
 	return 0;
