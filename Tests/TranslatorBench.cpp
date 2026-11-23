@@ -595,7 +595,7 @@ private:
 		// body {"text": [...], "target_lang": ...} -> {"translations": [{"text": ...}]}.
 		// Wrong key -> 403, like DeepL.
 		if (path == "/v2/translate") {						// DeepL
-			if (header ("authorization") != "DeepL-Auth-Key cle-deepl:fx")
+			if (header ("authorization") != "DeepL-Auth-Key key-deepl:fx")
 				return Respond (c, 403, "{\"message\": \"Authorization failed\"}");
 			return Respond (c, 200, "{\"translations\": [" + list (v.Field ("text"), "DL", v.Text ("target_lang"), "text") + "]}");
 		}
@@ -604,7 +604,7 @@ private:
 		// [{"translations": [{"text": ..., "to": ...}]}, ...]. Wrong key -> 401.
 		// (Told apart from LibreTranslate, which uses the same path, by "api-version".)
 		if (path == "/translate" && !Parameter (request, "api-version").empty ()) {	// Microsoft
-			if (header ("ocp-apim-subscription-key") != "cle-ms")
+			if (header ("ocp-apim-subscription-key") != "key-ms")
 				return Respond (c, 401, "{\"error\": {\"message\": \"invalid key\"}}");
 			const std::string to = Parameter (request, "to");
 			std::string r;
@@ -619,7 +619,7 @@ private:
 		// "target": ...} -> {"data": {"translations": [{"translatedText": ...}]}}.
 		// Wrong or missing key -> 400 "API key not valid".
 		if (path == "/language/translate/v2") {				// Google
-			if (Parameter (request, "key") != "cle-google")
+			if (Parameter (request, "key") != "key-google")
 				return Respond (c, 400, "{\"error\": {\"message\": \"API key not valid\"}}");
 			return Respond (c, 200, "{\"data\": {\"translations\": [" + list (v.Field ("q"), "GG", v.Text ("target"), "translatedText") + "]}}");
 		}
@@ -1293,7 +1293,7 @@ int main ()
 		std::wstring error;
 		Check ("keys.json template created", TT::CreateKeysTemplate (root, error) && TT::FileExists (keys));
 		// The Google key is missing at first (the keys match what FakeServer expects)
-		Write (keys, "{\"deepl\": {\"key\": \"cle-deepl:fx\"}, \"microsoft\": {\"key\": \"cle-ms\", \"region\": \"westeurope\"},"
+		Write (keys, "{\"deepl\": {\"key\": \"key-deepl:fx\"}, \"microsoft\": {\"key\": \"key-ms\", \"region\": \"westeurope\"},"
 					  " \"google\": {\"key\": \"\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"key\": \"\"}}");
 		HANDLE engine = StartEngine (port, TT::Join (root, L"log.txt"), L"--keys \"" + keys + L"\"");
 		Check ("engine started with keys.json", engine != nullptr);
@@ -1324,8 +1324,8 @@ int main ()
 			Check ("google without a key: original text kept", o.WaitFor (Shows ("unknown", "Texte inconnu"), 10000));
 			Sleep (2000);
 			Text (o, "unknown", "Texte inconnu", "Texte inconnu");
-			Write (keys, "{\"deepl\": {\"key\": \"cle-deepl:fx\"}, \"microsoft\": {\"key\": \"cle-ms\", \"region\": \"westeurope\"},"
-						  " \"google\": {\"key\": \"cle-google\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"key\": \"\"}}");
+			Write (keys, "{\"deepl\": {\"key\": \"key-deepl:fx\"}, \"microsoft\": {\"key\": \"key-ms\", \"region\": \"westeurope\"},"
+						  " \"google\": {\"key\": \"key-google\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"key\": \"\"}}");
 			Check ("Google key hot-added: translated on the next retry (< 30 s)",
 					  o.WaitFor (Shows ("unknown", "GG:en:Texte inconnu"), 30000), o.Read ("unknown").displayed);
 
@@ -1385,7 +1385,7 @@ int main ()
 		// keys.json with an extra "_explanation" entry and a DeepL key: both must survive
 		// when the engine writes the MyMemory e-mail (step 4). No e-mail at first.
 		const std::wstring keys = TT::KeysPath (root);
-		Write (keys, "{\"_explanation\": \"test\", \"deepl\": {\"key\": \"cle-deepl:fx\"}, \"mymemory\": {\"email\": \"\"}}");
+		Write (keys, "{\"_explanation\": \"test\", \"deepl\": {\"key\": \"key-deepl:fx\"}, \"mymemory\": {\"email\": \"\"}}");
 		HANDLE engine = StartEngine (port, TT::Join (root, L"log.txt"), L"--no-dialog --keys \"" + keys + L"\"");
 		Check ("engine started", engine != nullptr);
 		Check ("corrections.json pre-filled by the add-on", TT::FileExists (TT::CorrectionsPath (root)));
@@ -1449,7 +1449,7 @@ int main ()
 			std::string c;
 			TT::ReadWholeFile (keys, c);
 			Check ("e-mail saved in keys.json", code == 0 && c.find ("\"email\": \"me@example.com\"") != std::string::npos);
-			Check ("the other keys of keys.json are kept", c.find ("\"key\": \"cle-deepl:fx\"") != std::string::npos &&
+			Check ("the other keys of keys.json are kept", c.find ("\"key\": \"key-deepl:fx\"") != std::string::npos &&
 																	c.find ("\"_explanation\": \"test\"") != std::string::npos);
 			Check ("with the e-mail: MyMemory translates again (< 30 s)", o.WaitFor (Shows ("unknown", "MM:de:Texte inconnu"), 30000),
 					  o.Read ("unknown").displayed);

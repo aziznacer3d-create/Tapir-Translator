@@ -656,7 +656,7 @@ bool WriteSettings (const std::wstring& root, const Settings& settings, std::wst
 {
 	// Step 1: refuse unknown input / output languages.
 	if (!KnownLanguage (settings.language) || !KnownLanguage (settings.input)) {
-		error = L"langue inconnue : " + FromUtf8 (settings.input) + L" -> " + FromUtf8 (settings.language);
+		error = L"unknown language: " + FromUtf8 (settings.input) + L" -> " + FromUtf8 (settings.language);
 		return false;
 	}
 	// Step 2: build the JSON by hand. An unknown translator falls back to "mymemory" and an
