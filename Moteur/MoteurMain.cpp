@@ -123,7 +123,7 @@ bool LireRequete (SOCKET s, std::string& methode, std::string& chemin, std::stri
 std::string Etat (const Traducteur& t)
 {
 	std::string langues;
-	for (const char* l : { "fr", "en", "de", "es", "pt", "it", "hu", "ar" }) {
+	for (const char* l : LanguesArchicad) {
 		if (t.Prend (l))
 			langues += std::string (langues.empty () ? "" : ", ") + Json::Chaine (l);
 	}
@@ -193,6 +193,7 @@ int main (int argc, char** argv)
 {
 	int port = 8779;
 	bool essai = false;
+	std::string modele;
 	DWORD parent = 0;
 	for (int i = 1; i < argc; ++i) {
 		const std::string a = argv[i];
@@ -200,6 +201,8 @@ int main (int argc, char** argv)
 			port = std::atoi (argv[++i]);
 		else if (a == "--essai")
 			essai = true;
+		else if (a == "--modele" && i + 1 < argc)
+			modele = argv[++i];
 		else if (a == "--parent" && i + 1 < argc)
 			parent = static_cast<DWORD> (std::strtoul (argv[++i], nullptr, 10));
 		else if (a == "--journal" && i + 1 < argc)
@@ -209,8 +212,17 @@ int main (int argc, char** argv)
 	std::unique_ptr<Traducteur> traducteur;
 	if (essai)
 		traducteur = CreerTraducteurEssai ();
+	else if (!modele.empty ()) {
+		const DWORD debut = GetTickCount ();
+		std::string erreur;
+		traducteur = CreerTraducteurM2M100 (modele, erreur);
+		if (traducteur == nullptr)
+			Journal ("ERREUR modele " + modele + " : " + erreur);
+		else
+			Journal ("modele charge en " + std::to_string (GetTickCount () - debut) + " ms : " + modele);
+	}
 	if (traducteur == nullptr) {
-		Journal ("aucun traducteur disponible (modele reel pas encore branche)");
+		Journal ("aucun traducteur disponible (ni --essai, ni --modele utilisable)");
 		std::fprintf (stderr, "aucun traducteur disponible\n");
 		return 3;
 	}

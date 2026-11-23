@@ -26,3 +26,7 @@ Thumbs.db
 Desktop.ini
 
 __pycache__/
+
+# Telechargements (modele, sources tierces) et modele converti
+_externe/
+modele/

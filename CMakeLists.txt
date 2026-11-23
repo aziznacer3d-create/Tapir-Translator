@@ -274,7 +274,7 @@ if (WIN32)
 	target_include_directories (BancTraducteur PRIVATE Src)
 	target_compile_features (BancTraducteur PRIVATE cxx_std_20)
 	target_compile_options (BancTraducteur PRIVATE /W3 /WX /utf-8)
-	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
+	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"" "BANC_DOSSIER_MODELE=\"${CMAKE_CURRENT_LIST_DIR}/modele\"")
 endif ()
 
 # Moteur de traduction hors ligne (serveur HTTP local lance par l'add-on)
@@ -289,6 +289,28 @@ if (WIN32)
 	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
 	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32)
 	add_dependencies (BancTraducteur TapirTranslatorMoteur)
+
+	# Traducteur reel : CTranslate2 (MIT, compile en statique sans MKL, voir README) +
+	# SentencePiece (Apache 2.0, vcpkg x64-windows-static). CRT statique : aucune DLL a livrer.
+	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_externe/ct2_install" CACHE PATH "Installation de CTranslate2 (statique).")
+	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_externe/CTranslate2/build" CACHE PATH "Dossier de build de CTranslate2 (Ruy, cpu_features).")
+	set (TT_VCPKG_STATIQUE "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
+	if (EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib")
+		message (STATUS "Moteur : CTranslate2 + SentencePiece (traducteur M2M100)")
+		file (GLOB_RECURSE CT2_DEPENDANCES "${TT_CT2_BUILD}/third_party/*.lib")
+		list (FILTER CT2_DEPENDANCES INCLUDE REGEX "/Release/")
+		list (FILTER CT2_DEPENDANCES EXCLUDE REGEX "googletest|gtest|gmock|cxxopts")
+		file (GLOB VCPKG_LIBS "${TT_VCPKG_STATIQUE}/lib/absl_*.lib" "${TT_VCPKG_STATIQUE}/lib/utf8_*.lib")
+		target_sources (TapirTranslatorMoteur PRIVATE Moteur/TraducteurM2M100.cpp)
+		target_include_directories (TapirTranslatorMoteur SYSTEM PRIVATE "${TT_CT2}/include" "${TT_VCPKG_STATIQUE}/include")
+		target_link_libraries (TapirTranslatorMoteur PRIVATE
+			"${TT_CT2}/lib/ctranslate2.lib" ${CT2_DEPENDANCES}
+			"${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib" "${TT_VCPKG_STATIQUE}/lib/libprotobuf-lite.lib" ${VCPKG_LIBS})
+		set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+	else ()
+		message (STATUS "Moteur : sans CTranslate2 (mode --essai seulement)")
+		target_sources (TapirTranslatorMoteur PRIVATE Moteur/TraducteurM2M100Absent.cpp)
+	endif ()
 endif ()
 
 # Charge embarquee a la fin du .apx : moteur (et modele s'il est present dans TT_DOSSIER_MODELE).
@@ -317,6 +339,8 @@ if (WIN32)
 		COMMAND ${CMAKE_COMMAND} -E rm -rf "${DossierCharge}"
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}"
 		COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:TapirTranslatorMoteur>" "${DossierCharge}/"
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licences" "${DossierCharge}/licences"
+		COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_LIST_DIR}/LICENSE" "${DossierCharge}/licences/Tapir_Translator_Unlicense.txt"
 		${CommandesModele}
 		COMMAND "$<TARGET_FILE:Empaqueter>" "$<TARGET_FILE:AddOn>" "${DossierCharge}"
 		COMMENT "Embarquement du moteur de traduction dans le .apx..."

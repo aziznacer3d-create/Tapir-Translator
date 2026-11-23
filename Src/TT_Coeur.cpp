@@ -13,7 +13,7 @@
 
 namespace TT {
 
-const char* const VersionAddOn = "0.3.0";
+const char* const VersionAddOn = "0.4.0";
 
 // Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
 // colonnes de dictionnaires/_commun.json
@@ -26,7 +26,19 @@ const Langue Langues[] = {
 	{ "pt",	"Português" },
 	{ "it",	"Italiano" },
 	{ "hu",	"Magyar" },
-	{ "ar",	"العربية" },
+	{ "cs",	"Čeština" },
+	{ "pl",	"Polski" },
+	{ "ru",	"Русский" },
+	{ "uk",	"Українська" },
+	{ "el",	"Ελληνικά" },
+	{ "tr",	"Türkçe" },
+	{ "nl",	"Nederlands" },
+	{ "sv",	"Svenska" },
+	{ "no",	"Norsk" },
+	{ "fi",	"Suomi" },
+	{ "ja",	"日本語" },
+	{ "ko",	"한국어" },
+	{ "zh",	"中文" },
 };
 const int NombreLangues = static_cast<int> (sizeof (Langues) / sizeof (Langues[0]));
 
@@ -292,17 +304,31 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 		ok = false;
 	}
 
+	// _commun.json est celui de la version de l'add-on : toujours remplace.
+	// Les ajouts de l'utilisateur vont dans _perso.json (jamais touche, prioritaire).
 	const std::wstring commun = Joindre (dictionnaires, L"_commun.json");
-	if (FichierExiste (commun)) {
-		journal.push_back (L"dictionnaire commun garde (deja present) : " + commun);
+	const std::string contenu (reinterpret_cast<const char*> (Embarque::Commun), Embarque::CommunTaille);
+	std::string existant;
+	if (LireFichier (commun, existant) && existant == contenu) {
+		journal.push_back (L"dictionnaire commun a jour : " + commun);
+	} else if (EcrireFichier (commun, contenu, erreur)) {
+		journal.push_back (L"dictionnaire commun ecrit : " + commun);
 	} else {
-		const std::string contenu (reinterpret_cast<const char*> (Embarque::Commun), Embarque::CommunTaille);
-		if (EcrireFichier (commun, contenu, erreur))
-			journal.push_back (L"dictionnaire commun ecrit : " + commun);
-		else {
-			journal.push_back (erreur);
-			ok = false;
-		}
+		journal.push_back (erreur);
+		ok = false;
+	}
+	const std::wstring perso = Joindre (dictionnaires, L"_perso.json");
+	if (!FichierExiste (perso)) {
+		const std::string modele =
+			"{\n"
+			"  \"_explication\": \"Vos traductions communes a tous les scripts. Jamais modifie par l'add-on ; l'emporte sur _commun.json. Une notion par ligne, une colonne par langue (codes : fr en de es pt it hu cs pl ru uk el tr nl sv no fi ja ko zh).\",\n"
+			"  \"format\": 2,\n"
+			"  \"termes\": [\n"
+			"    {\"en\": \"Example\", \"fr\": \"Exemple\", \"de\": \"Beispiel\"}\n"
+			"  ]\n"
+			"}\n";
+		if (EcrireFichier (perso, modele, erreur))
+			journal.push_back (L"dictionnaire personnel cree : " + perso);
 	}
 	return ok;
 }

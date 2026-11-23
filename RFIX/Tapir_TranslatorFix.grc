@@ -35,7 +35,19 @@
 /* [  6] */			"Português"
 /* [  7] */			"Italiano"
 /* [  8] */			"Magyar"
-/* [  9] */			"العربية"
+/* [  9] */			"Čeština"
+/* [ 10] */			"Polski"
+/* [ 11] */			"Русский"
+/* [ 12] */			"Українська"
+/* [ 13] */			"Ελληνικά"
+/* [ 14] */			"Türkçe"
+/* [ 15] */			"Nederlands"
+/* [ 16] */			"Svenska"
+/* [ 17] */			"Norsk"
+/* [ 18] */			"Suomi"
+/* [ 19] */			"日本語"
+/* [ 20] */			"한국어"
+/* [ 21] */			"中文"
 }
 
 'STR#' 32600 "Aide : langue d'entree" {
@@ -49,7 +61,19 @@
 /* [  6] */		"Les scripts sont écrits en portugais."
 /* [  7] */		"Les scripts sont écrits en italien."
 /* [  8] */		"Les scripts sont écrits en hongrois."
-/* [  9] */		"Les scripts sont écrits en arabe."
+/* [  9] */		"Les scripts sont écrits en tchèque."
+/* [ 10] */		"Les scripts sont écrits en polonais."
+/* [ 11] */		"Les scripts sont écrits en russe."
+/* [ 12] */		"Les scripts sont écrits en ukrainien."
+/* [ 13] */		"Les scripts sont écrits en grec."
+/* [ 14] */		"Les scripts sont écrits en turc."
+/* [ 15] */		"Les scripts sont écrits en néerlandais."
+/* [ 16] */		"Les scripts sont écrits en suédois."
+/* [ 17] */		"Les scripts sont écrits en norvégien."
+/* [ 18] */		"Les scripts sont écrits en finnois."
+/* [ 19] */		"Les scripts sont écrits en japonais."
+/* [ 20] */		"Les scripts sont écrits en coréen."
+/* [ 21] */		"Les scripts sont écrits en chinois."
 }
 
 
@@ -64,7 +88,19 @@
 /* [  6] */			"Português"
 /* [  7] */			"Italiano"
 /* [  8] */			"Magyar"
-/* [  9] */			"العربية"
+/* [  9] */			"Čeština"
+/* [ 10] */			"Polski"
+/* [ 11] */			"Русский"
+/* [ 12] */			"Українська"
+/* [ 13] */			"Ελληνικά"
+/* [ 14] */			"Türkçe"
+/* [ 15] */			"Nederlands"
+/* [ 16] */			"Svenska"
+/* [ 17] */			"Norsk"
+/* [ 18] */			"Suomi"
+/* [ 19] */			"日本語"
+/* [ 20] */			"한국어"
+/* [ 21] */			"中文"
 }
 
 'STR#' 32601 "Aide : langue de sortie" {
@@ -78,7 +114,19 @@
 /* [  6] */		"Traduit l'interface des scripts Tapir en portugais, en direct (fenêtres déjà ouvertes comprises)."
 /* [  7] */		"Traduit l'interface des scripts Tapir en italien, en direct (fenêtres déjà ouvertes comprises)."
 /* [  8] */		"Traduit l'interface des scripts Tapir en hongrois, en direct (fenêtres déjà ouvertes comprises)."
-/* [  9] */		"Traduit l'interface des scripts Tapir en arabe, en direct (fenêtres déjà ouvertes comprises)."
+/* [  9] */		"Traduit l'interface des scripts Tapir en tchèque, en direct."
+/* [ 10] */		"Traduit l'interface des scripts Tapir en polonais, en direct."
+/* [ 11] */		"Traduit l'interface des scripts Tapir en russe, en direct."
+/* [ 12] */		"Traduit l'interface des scripts Tapir en ukrainien, en direct."
+/* [ 13] */		"Traduit l'interface des scripts Tapir en grec, en direct."
+/* [ 14] */		"Traduit l'interface des scripts Tapir en turc, en direct."
+/* [ 15] */		"Traduit l'interface des scripts Tapir en néerlandais, en direct."
+/* [ 16] */		"Traduit l'interface des scripts Tapir en suédois, en direct."
+/* [ 17] */		"Traduit l'interface des scripts Tapir en norvégien, en direct."
+/* [ 18] */		"Traduit l'interface des scripts Tapir en finnois, en direct."
+/* [ 19] */		"Traduit l'interface des scripts Tapir en japonais, en direct."
+/* [ 20] */		"Traduit l'interface des scripts Tapir en coréen, en direct."
+/* [ 21] */		"Traduit l'interface des scripts Tapir en chinois, en direct."
 }
 
 

@@ -34,7 +34,7 @@ Toute erreur interne est ecrite dans journal.txt et n'atteint jamais le script.
 import os
 import sys
 
-VERSION_COUCHE = "0.3.0"
+VERSION_COUCHE = "0.4.0"
 _PERIODE_MS = 300            # relecture des reglages / dictionnaires, traductions arrivees
 _TAILLE_JOURNAL = 512 * 1024  # au-dela, le journal repart a zero
 
@@ -117,7 +117,8 @@ class _Moteur:
         dico = os.path.join(self.racine, "dictionnaires")
         # du moins prioritaire au plus prioritaire
         return [os.path.join(self.racine, "reglages.json"),
-                os.path.join(dico, "_commun.json"),
+                os.path.join(dico, "_commun.json"),     # celui de l'add-on (remplace a chaque version)
+                os.path.join(dico, "_perso.json"),      # celui de l'utilisateur (jamais touche)
                 os.path.join(dico, outil + ".json")]
 
     def _calculer_empreinte(self):
@@ -149,7 +150,7 @@ class _Moteur:
         if emp == self.empreinte:
             return False
         self.empreinte = emp
-        reglages_f, commun_f, outil_f = self._fichiers()
+        reglages_f, commun_f, perso_f, outil_f = self._fichiers()
 
         reglages = self._lire_json(reglages_f) or {}
         langue = str(reglages.get("langue", "") or "")
@@ -158,8 +159,10 @@ class _Moteur:
         self.collecte = bool(reglages.get("collecte", False))
 
         commun = self._lire_json(commun_f)
+        perso = self._lire_json(perso_f)
         outil = self._lire_json(outil_f)
         commun = commun if isinstance(commun, dict) else {}
+        perso = perso if isinstance(perso, dict) else {}
         outil = outil if isinstance(outil, dict) else {}
         # seule la langue declaree par le dictionnaire du script compte : le dictionnaire
         # commun sert des scripts ecrits dans n'importe quelle langue
@@ -169,11 +172,11 @@ class _Moteur:
         source = entree or str(outil.get("langue_source", "") or "")
         self.entree = entree
 
-        # du moins prioritaire au plus prioritaire : termes communs, traductions
-        # communes, termes du script, traductions du script
+        # du moins prioritaire au plus prioritaire : commun (add-on), perso (utilisateur),
+        # dictionnaire du script ; dans chacun, termes puis traductions
         table = {}
         if langue:
-            for d in (commun, outil):
+            for d in (commun, perso, outil):
                 table.update(self._depuis_termes(d.get("termes"), langue, source, bool(entree)))
                 trad = d.get("traductions", {})
                 if isinstance(trad, dict) and isinstance(trad.get(langue), dict):
@@ -198,7 +201,7 @@ class _Moteur:
 
         # colonnes des dictionnaires : reconnaitre la langue du script (detection automatique)
         self.colonnes = {}
-        for d in (commun, outil):
+        for d in (commun, perso, outil):
             for t in d.get("termes", []) if isinstance(d.get("termes"), list) else []:
                 if isinstance(t, dict):
                     for code, texte in t.items():

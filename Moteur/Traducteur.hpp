@@ -13,6 +13,19 @@
 #include <string>
 #include <vector>
 
+// Langues des versions d'ArchiCAD 29 (codes de TT::Langues), toutes prises en charge par M2M100
+inline const char* const LanguesArchicad[] = { "fr", "en", "de", "es", "pt", "it", "hu", "cs", "pl", "ru",
+											   "uk", "el", "tr", "nl", "sv", "no", "fi", "ja", "ko", "zh" };
+
+inline bool LangueArchicad (const std::string& langue)
+{
+	for (const char* l : LanguesArchicad) {
+		if (langue == l)
+			return true;
+	}
+	return false;
+}
+
 class Traducteur {
 public:
 	virtual ~Traducteur () = default;
@@ -32,5 +45,8 @@ public:
 
 // --essai : rend "[cible] texte" (aucun modele : banc de test de la chaine complete)
 std::unique_ptr<Traducteur> CreerTraducteurEssai ();
+
+// --modele <dossier> : M2M100 418M au format CTranslate2 (TraducteurM2M100.cpp)
+std::unique_ptr<Traducteur> CreerTraducteurM2M100 (const std::string& dossier, std::string& erreur);
 
 #endif

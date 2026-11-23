@@ -293,13 +293,13 @@ void Langue (const std::wstring& racine, const char* code, bool collecte, const 
 }
 
 // Moteur de traduction (traducteur d'essai), a cote du banc
-HANDLE LancerMoteur (int port, const std::wstring& journal)
+HANDLE LancerMoteur (int port, const std::wstring& journal, const std::wstring& modele = std::wstring ())
 {
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW (nullptr, exe, MAX_PATH);
 	std::wstring chemin = exe;
 	chemin = chemin.substr (0, chemin.find_last_of (L'\\') + 1) + L"TapirTranslatorMoteur.exe";
-	std::wstring ligne = L"\"" + chemin + L"\" --essai --port " + std::to_wstring (port) + L" --parent " +
+	std::wstring ligne = L"\"" + chemin + (modele.empty () ? std::wstring (L"\" --essai") : L"\" --modele \"" + modele + L"\"") + L" --port " + std::to_wstring (port) + L" --parent " +
 						 std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" + journal + L"\"";
 	std::vector<wchar_t> tampon (ligne.begin (), ligne.end ());
 	tampon.push_back (L'\0');
@@ -336,6 +336,19 @@ std::string Preparer (const std::wstring& racine)
 	Verifier ("ExtraireCouche", TT::ExtraireCouche (racine, journal));
 	Verifier ("couche\\sitecustomize.py ecrit", TT::FichierExiste (TT::Joindre (TT::Joindre (racine, L"couche"), L"sitecustomize.py")));
 	Verifier ("dictionnaires\\_commun.json ecrit", TT::FichierExiste (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_commun.json")));
+	Verifier ("dictionnaires\\_perso.json cree", TT::FichierExiste (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_perso.json")));
+	// un _commun.json ancien (modifie) est remplace par celui de la version ; _perso.json est garde
+	Ecrire (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_commun.json"), "{\"ancien\": true}");
+	Ecrire (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_perso.json"), "{\"format\": 2, \"termes\": []}");
+	{
+		std::vector<std::wstring> j2;
+		TT::ExtraireCouche (racine, j2);
+		std::string c, p;
+		TT::LireFichier (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_commun.json"), c);
+		TT::LireFichier (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"_perso.json"), p);
+		Verifier ("ancien _commun.json remplace par celui de la version", c.find ("\"termes\"") != std::string::npos);
+		Verifier ("_perso.json de l'utilisateur garde", p == "{\"format\": 2, \"termes\": []}");
+	}
 	std::string dico;
 	TT::LireFichier (TT::Joindre (TT::Joindre (DossierTests (), L"donnees"), L"banc_outil.json"), dico);
 	Ecrire (TT::Joindre (TT::Joindre (racine, L"dictionnaires"), L"banc_outil.json"), dico);
@@ -571,10 +584,11 @@ int main ()
 		Texte (o, "murs", "Falak", "Murs");
 		Texte (o, "menu_quitter", "Kilépés", "Quitter");
 		Texte (o, "onglet", "Általános", "Général");
-		Langue (racine, "ar", false);
-		Verifier ("arabe", o.Attendre (Affiche ("fermer", "إغلاق"), 5000));
-		Texte (o, "murs", "الجدران", "Murs");
-		Texte (o, "entete", "الاسم", "Nom");
+		// polonais : langue d'ArchiCAD sans colonne dans le dictionnaire commun, moteur
+		// desactive -> le texte d'origine reste (seul le moteur la traduira)
+		Langue (racine, "pl", false);
+		Verifier ("polonais sans colonne de dictionnaire : texte d'origine", o.Attendre (Affiche ("fermer", "Fermer"), 5000));
+		Texte (o, "murs", "Murs", "Murs");
 		Langue (racine, "es", false);
 		Verifier ("espagnol", o.Attendre (Affiche ("fermer", "Cerrar"), 5000));
 		Texte (o, "murs", "Muros", "Murs");
@@ -697,6 +711,67 @@ int main ()
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
 		Langue (racine, "en", false);
 	}
+
+	// --- moteur reel (M2M100) de bout en bout ------------------------------------------------
+	std::printf ("\n[3e] Moteur reel M2M100 (si le modele est present)\n");
+#if defined (BANC_DOSSIER_MODELE)
+	{
+		std::wstring modele = TT::DepuisUtf8 (BANC_DOSSIER_MODELE);
+		for (wchar_t& c : modele) {
+			if (c == L'/')
+				c = L'\\';
+		}
+		if (!TT::FichierExiste (TT::Joindre (modele, L"model.bin"))) {
+			std::printf ("  (saute : pas de modele dans %s)\n", TT::Utf8 (modele).c_str ());
+		} else {
+			const int port = 8796;
+			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
+			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_moteur_reel");
+			// le cache garde les reponses du moteur d'essai ([3d]) : on repart d'un cache vide
+			SupprimerArbre (TT::Joindre (racine, L"cache"));
+			HANDLE moteur = LancerMoteur (port, TT::Joindre (racine, L"journal.txt"), modele);
+			Verifier ("moteur reel lance", moteur != nullptr);
+			Langue (racine, "en", false, "fr", true);
+			{
+				Outil o;
+				Verifier ("lancement", o.Lancer (script, racine));
+				const auto traduit = [] (const std::string& cle, const std::string& origine) {
+					return [cle, origine] (const std::map<std::string, Valeur>& e) {
+						auto it = e.find (cle);
+						return it != e.end () && it->second.affiche != origine && it->second.affiche.find ("[en]") == std::string::npos &&
+							   !it->second.affiche.empty ();
+					};
+				};
+				Verifier ("phrase hors dictionnaire traduite par M2M100 (fr -> en)", o.Attendre (traduit ("inconnu", "Texte inconnu"), 40000));
+				Verifier ("titre traduit par M2M100", o.Attendre (traduit ("titre", "Outil de démonstration"), 10000));
+				const Valeur inconnu = o.Lire ("inconnu");
+				const Valeur titre = o.Lire ("titre");
+				std::printf ("         | \"Texte inconnu\" -> \"%s\"\n         | \"Outil de démonstration\" -> \"%s\"\n",
+							 inconnu.affiche.c_str (), titre.affiche.c_str ());
+				Verifier ("le script voit toujours l'original", inconnu.vu == "Texte inconnu" && titre.vu == "Outil de démonstration");
+				Texte (o, "fermer", "Close", "Fermer");						// dictionnaire d'abord
+				Texte (o, "chemin", "C:\\Projets\\plan.pln", "C:\\Projets\\plan.pln");
+				Texte (o, "logique", "ok");
+				Langue (racine, "pl", false, "fr", true);
+				Verifier ("polonais (aucune colonne de dictionnaire) : traduit par le moteur",
+						  o.Attendre ([] (const std::map<std::string, Valeur>& e) {
+							  auto it = e.find ("fermer");
+							  return it != e.end () && it->second.affiche != "Fermer" && it->second.affiche != "Close" &&
+									 !it->second.affiche.empty ();
+						  }, 30000));
+				std::printf ("         | \"Fermer\" -> \"%s\" ; \"Murs\" -> \"%s\"\n", o.Lire ("fermer").affiche.c_str (), o.Lire ("murs").affiche.c_str ());
+				Texte (o, "logique", "ok");
+				DWORD code = 1;
+				Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+			}
+			ArreterMoteur (moteur);
+			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+			Langue (racine, "en", false);
+		}
+	}
+#else
+	std::printf ("  (saute : BANC_DOSSIER_MODELE non defini)\n");
+#endif
 
 	// --- hors Tapir : la couche ne doit rien faire ---------------------------------------
 	std::printf ("\n[4] Python lance hors Tapir (pas de TAPIR_SCRIPT_ID)\n");

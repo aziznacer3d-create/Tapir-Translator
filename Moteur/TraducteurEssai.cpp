@@ -17,15 +17,7 @@ class TraducteurEssai : public Traducteur {
 public:
 	std::string Nom () const override { return "essai (aucun modele)"; }
 
-	bool Prend (const std::string& langue) const override
-	{
-		static const char* const langues[] = { "fr", "en", "de", "es", "pt", "it", "hu", "ar" };
-		for (const char* l : langues) {
-			if (langue == l)
-				return true;
-		}
-		return false;
-	}
+	bool Prend (const std::string& langue) const override { return LangueArchicad (langue); }
 
 	bool Traduire (const std::string& /*source*/, const std::string& cible, const std::vector<std::string>& textes,
 				   std::vector<std::string>& resultats, std::string& /*erreur*/) override
