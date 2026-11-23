@@ -703,6 +703,11 @@ void OuvrirDossier ()
 // 1-based item index; always returns NoError (errors are traced in the Session Report).
 GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 {
+	// Step 0: stay loaded after this call. The API asks for ACAPI_KeepInMemory (true) "each time
+	// your add-on is called": without it ArchiCAD unloads the add-on once the menu command returns,
+	// FreeData stops the engine, and the next Tapir script only gets the dictionary translations
+	// (bug of v0.7.3 and before, seen after choosing the tool language).
+	ACAPI_KeepInMemory (true);
 	const short menu = menuParams->menuItemRef.menuResID;
 	const Int32 index = menuParams->menuItemRef.itemIndex;
 	// The three language menus have one item per entry of TT::Langues.
@@ -855,6 +860,9 @@ GSErrCode Initialize (void)
 // Called when the add-on is unloaded (ArchiCAD quits): stop the watchdog and the engine.
 GSErrCode FreeData (void)
 {
+	// Traced in journal.txt: an unload outside ArchiCAD's exit means the add-on lost its
+	// "keep in memory" state (the engine stops with it).
+	Journal ("add-on decharge (FreeData)");
 	ArreterMoteur ();
 	return NoError;
 }

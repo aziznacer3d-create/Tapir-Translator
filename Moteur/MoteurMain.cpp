@@ -69,7 +69,7 @@
 namespace {
 
 // Engine version, reported by GET /etat.
-const char* const kVersion = "0.7.3";
+const char* const kVersion = "0.7.4";
 // Path of the log file (--journal); empty = no logging.
 std::string g_journal;
 
