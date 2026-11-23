@@ -2,18 +2,18 @@
 # Tapir Translator - CMake build (Windows: Visual Studio 2022, x64)
 #
 #   Targets and build steps:
-#     1. MenusLocalises   runs GenererMenus to (re)generate
+#     1. LocalizedMenus   runs GenerateMenus to (re)generate
 #                         RFIX/Tapir_TranslatorMenus.grc (menus in 20 languages)
 #     2. AddOnResources   compiles the GRC resources with the DevKit's
 #                         CompileResources.py (needs Python 3)
-#     3. (custom command) Tools/Embarquer.cmake turns couche/sitecustomize.py
-#                         and dictionnaires/_commun.json into genere/TT_Embarque.cpp
+#     3. (custom command) Tools/Embed.cmake turns layer/sitecustomize.py
+#                         and dictionaries/_common.json into generated/TT_Embedded.cpp
 #     4. AddOn            the add-on itself, Tapir_Translator.apx (Src/*.cpp)
-#     5. TapirTranslatorMoteur  the local translation engine (Moteur/*.cpp),
-#                         optionally with the offline model (TT_MODELE_LOCAL)
-#     6. Empaqueter       POST_BUILD of AddOn: appends the engine, the licences
+#     5. TapirTranslatorEngine  the local translation engine (Engine/*.cpp),
+#                         optionally with the offline model (TT_LOCAL_MODEL)
+#     6. Packer       POST_BUILD of AddOn: appends the engine, the licenses
 #                         (and the model) to the end of the .apx
-#     7. BancTraducteur   test bench, outside ArchiCAD
+#     7. TranslatorBench   test bench, outside ArchiCAD
 #
 #   Usage:
 #     cmake -S . -B build -G "Visual Studio 17 2022" -A x64
@@ -190,7 +190,7 @@ endif ()
 
 # AddOn
 # Step 4 of the build: the add-on DLL (Tapir_Translator.apx) from every
-# Src/*.c / *.cpp / *.h / *.hpp file plus the generated TT_Embarque.cpp
+# Src/*.c / *.cpp / *.h / *.hpp file plus the generated TT_Embedded.cpp
 # (.c files are compiled as C++).
 
 file (GLOB AddOnHeaderFiles
@@ -206,24 +206,24 @@ file (GLOB AllCFiles
 )
 set_source_files_properties(${AllCFiles} PROPERTIES LANGUAGE CXX)
 # Step 3 of the build: Python layer and common dictionary embedded in the .apx as byte arrays
-# (Tools/Embarquer.cmake, run in script mode; regenerated when one of the inputs changes)
-set (EmbarqueCpp "${CMAKE_BINARY_DIR}/genere/TT_Embarque.cpp")
-set (CoucheSource "${CMAKE_CURRENT_LIST_DIR}/couche/sitecustomize.py")
-set (CommunSource "${CMAKE_CURRENT_LIST_DIR}/dictionnaires/_commun.json")
+# (Tools/Embed.cmake, run in script mode; regenerated when one of the inputs changes)
+set (EmbeddedCpp "${CMAKE_BINARY_DIR}/generated/TT_Embedded.cpp")
+set (LayerSource "${CMAKE_CURRENT_LIST_DIR}/layer/sitecustomize.py")
+set (CommonSource "${CMAKE_CURRENT_LIST_DIR}/dictionaries/_common.json")
 add_custom_command (
-	OUTPUT "${EmbarqueCpp}"
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/genere"
-	COMMAND ${CMAKE_COMMAND} "-DSORTIE=${EmbarqueCpp}" "-DCOUCHE=${CoucheSource}" "-DCOMMUN=${CommunSource}"
-			-P "${CMAKE_CURRENT_LIST_DIR}/Tools/Embarquer.cmake"
-	DEPENDS "${CoucheSource}" "${CommunSource}" "${CMAKE_CURRENT_LIST_DIR}/Tools/Embarquer.cmake"
-	COMMENT "Embarquement de la couche de traduction..."
+	OUTPUT "${EmbeddedCpp}"
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/generated"
+	COMMAND ${CMAKE_COMMAND} "-DOUTPUT=${EmbeddedCpp}" "-DLAYER=${LayerSource}" "-DCOMMON=${CommonSource}"
+			-P "${CMAKE_CURRENT_LIST_DIR}/Tools/Embed.cmake"
+	DEPENDS "${LayerSource}" "${CommonSource}" "${CMAKE_CURRENT_LIST_DIR}/Tools/Embed.cmake"
+	COMMENT "Embedding de la layer de traduction..."
 )
 
 set (
 	AddOnFiles
 	${AddOnHeaderFiles}
 	${AddOnSourceFiles}
-	"${EmbarqueCpp}"
+	"${EmbeddedCpp}"
 )
 source_group ("Sources" FILES ${AddOnFiles})
 # A DLL on Windows (renamed .apx below), a bundle on macOS
@@ -249,11 +249,11 @@ if (WIN32)
 	target_link_options (AddOn PUBLIC /export:GetExportedFuncAddrs,@1 /export:SetImportedFuncAddrs,@2)
 endif ()
 
-# Include paths: add-on sources, DevKit headers, and Moteur/ (Json.hpp etc. shared with the engine)
+# Include paths: add-on sources, DevKit headers, and Engine/ (Json.hpp etc. shared with the engine)
 target_include_directories (AddOn PUBLIC
 	${AddOnSourcesFolder}
 	${AC_API_DEVKIT_DIR}/Support/Inc
-	${CMAKE_CURRENT_LIST_DIR}/Moteur
+	${CMAKE_CURRENT_LIST_DIR}/Engine
 )
 
 # DevKit static API library (+ Shell32 on Windows)
@@ -317,129 +317,129 @@ endif()
 
 # Step 7 of the build - test bench (outside ArchiCAD): runs a fake Tapir script through
 # "uv run --script", like the Tapir palette, with the environment prepared by the same code
-# as the add-on (Src/TT_Coeur.cpp). Built with /W3 /WX.
+# as the add-on (Src/TT_Core.cpp). Built with /W3 /WX.
 if (WIN32)
-	add_executable (BancTraducteur
-		Tests/BancTraducteur.cpp
-		Src/TT_Coeur.cpp
-		Src/TT_Coeur.hpp
-		"${EmbarqueCpp}"
+	add_executable (TranslatorBench
+		Tests/TranslatorBench.cpp
+		Src/TT_Core.cpp
+		Src/TT_Core.hpp
+		"${EmbeddedCpp}"
 	)
-	target_include_directories (BancTraducteur PRIVATE Src Moteur)
-	target_compile_features (BancTraducteur PRIVATE cxx_std_20)
-	target_compile_options (BancTraducteur PRIVATE /W3 /WX /utf-8)
-	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
+	target_include_directories (TranslatorBench PRIVATE Src Engine)
+	target_compile_features (TranslatorBench PRIVATE cxx_std_20)
+	target_compile_options (TranslatorBench PRIVATE /W3 /WX /utf-8)
+	target_compile_definitions (TranslatorBench PRIVATE "BENCH_TESTS_DIR=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
 endif ()
 
 # Step 5 of the build - translation engine (local HTTP server on 127.0.0.1:8779, started by
 # the add-on): relays to the online translators. Linked with Winsock (server) and WinHTTP
-# (client). TT_MODELE_LOCAL adds the offline M2M100 model (off by default).
-option (TT_MODELE_LOCAL "Moteur hors ligne M2M100 (CTranslate2) dans le moteur et le .apx (~500 Mo)" OFF)
+# (client). TT_LOCAL_MODEL adds the offline M2M100 model (off by default).
+option (TT_LOCAL_MODEL "Engine hors line M2M100 (CTranslate2) dans le engine et le .apx (~500 Mo)" OFF)
 if (WIN32)
-	add_executable (TapirTranslatorMoteur
-		Moteur/MoteurMain.cpp
-		Moteur/TraducteurEssai.cpp
-		Moteur/TraducteursEnLigne.cpp
-		Moteur/Dialogue.cpp
-		Moteur/Dialogue.hpp
-		Src/TT_Textes.cpp
-		Moteur/Http.cpp
-		Moteur/Http.hpp
-		Moteur/Traducteur.hpp
-		Moteur/Json.hpp
+	add_executable (TapirTranslatorEngine
+		Engine/EngineMain.cpp
+		Engine/TestTranslator.cpp
+		Engine/OnlineTranslators.cpp
+		Engine/Dialogue.cpp
+		Engine/Dialogue.hpp
+		Src/TT_Texts.cpp
+		Engine/Http.cpp
+		Engine/Http.hpp
+		Engine/Translator.hpp
+		Engine/Json.hpp
 	)
-	target_compile_features (TapirTranslatorMoteur PRIVATE cxx_std_20)
-	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
-	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32 Winhttp)
-	target_include_directories (TapirTranslatorMoteur PRIVATE Src)
+	target_compile_features (TapirTranslatorEngine PRIVATE cxx_std_20)
+	target_compile_options (TapirTranslatorEngine PRIVATE /W3 /WX /utf-8)
+	target_link_libraries (TapirTranslatorEngine PRIVATE Ws2_32 Winhttp)
+	target_include_directories (TapirTranslatorEngine PRIVATE Src)
 	# Static CRT: the engine depends on no DLL (it runs from its extraction folder)
-	set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
-	add_dependencies (BancTraducteur TapirTranslatorMoteur)
+	set_property (TARGET TapirTranslatorEngine PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+	add_dependencies (TranslatorBench TapirTranslatorEngine)
 
 	# Offline translator: CTranslate2 (MIT, built statically without MKL, see README) +
 	# SentencePiece (Apache 2.0, vcpkg x64-windows-static). Static CRT: no DLL to ship.
-	# Used only if TT_MODELE_LOCAL is ON and both libraries are found; otherwise the
-	# stub TraducteurM2M100Absent.cpp is compiled instead.
-	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_externe/ct2_install" CACHE PATH "Installation de CTranslate2 (statique).")
-	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_externe/CTranslate2/build" CACHE PATH "Dossier de build de CTranslate2 (Ruy, cpu_features).")
-	set (TT_VCPKG_STATIQUE "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
-	if (TT_MODELE_LOCAL AND EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib")
-		message (STATUS "Moteur : CTranslate2 + SentencePiece (traducteur M2M100)")
+	# Used only if TT_LOCAL_MODEL is ON and both libraries are found; otherwise the
+	# stub TranslatorM2M100Missing.cpp is compiled instead.
+	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_external/ct2_install" CACHE PATH "Installation de CTranslate2 (staticText).")
+	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_external/CTranslate2/build" CACHE PATH "Folder de build de CTranslate2 (Ruy, cpu_features).")
+	set (TT_VCPKG_STATIC "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
+	if (TT_LOCAL_MODEL AND EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIC}/lib/sentencepiece.lib")
+		message (STATUS "Engine : CTranslate2 + SentencePiece (translator M2M100)")
 		# Third-party libraries built with CTranslate2 (Ruy, cpu_features...): Release
 		# builds only, test frameworks excluded; abseil / utf8 libraries needed by SentencePiece
 		file (GLOB_RECURSE CT2_DEPENDANCES "${TT_CT2_BUILD}/third_party/*.lib")
 		list (FILTER CT2_DEPENDANCES INCLUDE REGEX "/Release/")
 		list (FILTER CT2_DEPENDANCES EXCLUDE REGEX "googletest|gtest|gmock|cxxopts")
-		file (GLOB VCPKG_LIBS "${TT_VCPKG_STATIQUE}/lib/absl_*.lib" "${TT_VCPKG_STATIQUE}/lib/utf8_*.lib")
-		target_sources (TapirTranslatorMoteur PRIVATE Moteur/TraducteurM2M100.cpp)
-		target_include_directories (TapirTranslatorMoteur SYSTEM PRIVATE "${TT_CT2}/include" "${TT_VCPKG_STATIQUE}/include")
-		target_link_libraries (TapirTranslatorMoteur PRIVATE
+		file (GLOB VCPKG_LIBS "${TT_VCPKG_STATIC}/lib/absl_*.lib" "${TT_VCPKG_STATIC}/lib/utf8_*.lib")
+		target_sources (TapirTranslatorEngine PRIVATE Engine/TranslatorM2M100.cpp)
+		target_include_directories (TapirTranslatorEngine SYSTEM PRIVATE "${TT_CT2}/include" "${TT_VCPKG_STATIC}/include")
+		target_link_libraries (TapirTranslatorEngine PRIVATE
 			"${TT_CT2}/lib/ctranslate2.lib" ${CT2_DEPENDANCES}
-			"${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib" "${TT_VCPKG_STATIQUE}/lib/libprotobuf-lite.lib" ${VCPKG_LIBS})
-		set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+			"${TT_VCPKG_STATIC}/lib/sentencepiece.lib" "${TT_VCPKG_STATIC}/lib/libprotobuf-lite.lib" ${VCPKG_LIBS})
+		set_property (TARGET TapirTranslatorEngine PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	else ()
-		message (STATUS "Moteur : traducteurs en ligne seulement (TT_MODELE_LOCAL=OFF)")
-		target_sources (TapirTranslatorMoteur PRIVATE Moteur/TraducteurM2M100Absent.cpp)
+		message (STATUS "Engine : traducteurs en line seulement (TT_LOCAL_MODEL=OFF)")
+		target_sources (TapirTranslatorEngine PRIVATE Engine/TranslatorM2M100Missing.cpp)
 	endif ()
 endif ()
 
 # Step 6 of the build - payload appended to the end of the .apx: engine (and model if it is
-# present in TT_DOSSIER_MODELE). The user copies only the .apx; the add-on extracts the payload
+# present in TT_MODEL_DIR). The user copies only the .apx; the add-on extracts the payload
 # on first start.
-set (TT_DOSSIER_MODELE "${CMAKE_CURRENT_LIST_DIR}/modele" CACHE PATH "Dossier du modele de traduction a embarquer.")
+set (TT_MODEL_DIR "${CMAKE_CURRENT_LIST_DIR}/model" CACHE PATH "Folder du model de traduction a embed.")
 if (WIN32)
-	add_executable (Empaqueter
-		Tools/Empaqueter.cpp
-		Src/TT_Charge.cpp
-		Src/TT_Coeur.cpp
-		"${EmbarqueCpp}"
+	add_executable (Packer
+		Tools/Packer.cpp
+		Src/TT_Payload.cpp
+		Src/TT_Core.cpp
+		"${EmbeddedCpp}"
 	)
-	target_include_directories (Empaqueter PRIVATE Src)
-	target_compile_features (Empaqueter PRIVATE cxx_std_20)
-	target_compile_options (Empaqueter PRIVATE /W3 /WX /utf-8)
+	target_include_directories (Packer PRIVATE Src)
+	target_compile_features (Packer PRIVATE cxx_std_20)
+	target_compile_options (Packer PRIVATE /W3 /WX /utf-8)
 
 	# Payload folder, rebuilt from scratch after each link of the add-on
-	set (DossierCharge "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
-	set (CommandesModele "")
-	if (TT_MODELE_LOCAL AND EXISTS "${TT_DOSSIER_MODELE}")
-		message (STATUS "Modele embarque : ${TT_DOSSIER_MODELE}")
-		# Copy the model, and the licences of the offline engine's third-party components
+	set (PayloadFolder "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
+	set (ModelCommands "")
+	if (TT_LOCAL_MODEL AND EXISTS "${TT_MODEL_DIR}")
+		message (STATUS "Model embedded : ${TT_MODEL_DIR}")
+		# Copy the model, and the licenses of the offline engine's third-party components
 		# (CTranslate2, Ruy, SentencePiece, model...)
-		set (CommandesModele
-			COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_DOSSIER_MODELE}" "${DossierCharge}/modele"
-			COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licences" "${DossierCharge}/licences")
+		set (ModelCommands
+			COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_MODEL_DIR}" "${PayloadFolder}/model"
+			COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licenses" "${PayloadFolder}/licenses")
 	else ()
-		message (STATUS "Aucun modele embarque : le .apx reste leger")
+		message (STATUS "Aucun model embedded : le .apx rest leger")
 	endif ()
 	# After the link: empty the payload folder, copy the engine and the project licence
-	# (+ model and licences), then append the folder to the .apx with Empaqueter
+	# (+ model and licenses), then append the folder to the .apx with Packer
 	add_custom_command (TARGET AddOn POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E rm -rf "${DossierCharge}"
-		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}"
-		COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:TapirTranslatorMoteur>" "${DossierCharge}/"
-		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}/licences"
-		COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_LIST_DIR}/LICENSE" "${DossierCharge}/licences/Tapir_Translator_Unlicense.txt"
-		${CommandesModele}
-		COMMAND "$<TARGET_FILE:Empaqueter>" "$<TARGET_FILE:AddOn>" "${DossierCharge}"
-		COMMENT "Embarquement du moteur de traduction dans le .apx..."
+		COMMAND ${CMAKE_COMMAND} -E rm -rf "${PayloadFolder}"
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${PayloadFolder}"
+		COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:TapirTranslatorEngine>" "${PayloadFolder}/"
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${PayloadFolder}/licenses"
+		COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_LIST_DIR}/LICENSE" "${PayloadFolder}/licenses/Tapir_Translator_Unlicense.txt"
+		${ModelCommands}
+		COMMAND "$<TARGET_FILE:Packer>" "$<TARGET_FILE:AddOn>" "${PayloadFolder}"
+		COMMENT "Embedding du engine de traduction dans le .apx..."
 	)
 	# The engine and the packer must exist before the add-on's POST_BUILD runs;
 	# the test bench also reads payloads and the UI texts
-	add_dependencies (AddOn TapirTranslatorMoteur Empaqueter)
-	target_sources (BancTraducteur PRIVATE Src/TT_Charge.cpp Src/TT_Textes.cpp)
+	add_dependencies (AddOn TapirTranslatorEngine Packer)
+	target_sources (TranslatorBench PRIVATE Src/TT_Payload.cpp Src/TT_Texts.cpp)
 endif ()
 
 # Step 1 of the build - the add-on's menus in the 20 ArchiCAD languages: RFIX/Tapir_TranslatorMenus.grc
-# is generated from Src/TT_Textes.cpp before the resources are compiled (rewritten only if it changes).
+# is generated from Src/TT_Texts.cpp before the resources are compiled (rewritten only if it changes).
 if (WIN32)
-	add_executable (GenererMenus Tools/GenererMenus.cpp Src/TT_Textes.cpp Src/TT_Textes.hpp)
-	target_include_directories (GenererMenus PRIVATE Src)
-	target_compile_features (GenererMenus PRIVATE cxx_std_20)
-	target_compile_options (GenererMenus PRIVATE /W3 /WX /utf-8)
-	add_custom_target (MenusLocalises
-		COMMAND "$<TARGET_FILE:GenererMenus>" "${CMAKE_CURRENT_LIST_DIR}/RFIX/Tapir_TranslatorMenus.grc"
-		DEPENDS GenererMenus
-		COMMENT "Menus de Tapir Translator dans les 20 langues..."
+	add_executable (GenerateMenus Tools/GenerateMenus.cpp Src/TT_Texts.cpp Src/TT_Texts.hpp)
+	target_include_directories (GenerateMenus PRIVATE Src)
+	target_compile_features (GenerateMenus PRIVATE cxx_std_20)
+	target_compile_options (GenerateMenus PRIVATE /W3 /WX /utf-8)
+	add_custom_target (LocalizedMenus
+		COMMAND "$<TARGET_FILE:GenerateMenus>" "${CMAKE_CURRENT_LIST_DIR}/RFIX/Tapir_TranslatorMenus.grc"
+		DEPENDS GenerateMenus
+		COMMENT "Menus de Tapir Translator dans les 20 languages..."
 	)
-	add_dependencies (AddOnResources MenusLocalises)
+	add_dependencies (AddOnResources LocalizedMenus)
 endif ()

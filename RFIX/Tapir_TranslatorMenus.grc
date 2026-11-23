@@ -2,7 +2,7 @@
 
 /* ===== fr ===== */
 
-'STR#' 32100 "Langue d'entree" {
+'STR#' 32100 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Langue d'entrée"
 /* [1] */			"Détection automatique"
@@ -28,7 +28,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32400 "Langue d'entree (aides)" {
+'STR#' 32400 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconnaît tout seul la langue des textes du script."
@@ -206,7 +206,7 @@
 
 /* ===== en ===== */
 
-'STR#' 32110 "Langue d'entree" {
+'STR#' 32110 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Input language"
 /* [1] */			"Automatic detection"
@@ -232,7 +232,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32410 "Langue d'entree (aides)" {
+'STR#' 32410 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Recognizes the language of the script texts automatically."
@@ -410,7 +410,7 @@
 
 /* ===== de ===== */
 
-'STR#' 32120 "Langue d'entree" {
+'STR#' 32120 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Eingabesprache"
 /* [1] */			"Automatische Erkennung"
@@ -436,7 +436,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32420 "Langue d'entree (aides)" {
+'STR#' 32420 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Erkennt die Sprache der Skripttexte automatisch."
@@ -614,7 +614,7 @@
 
 /* ===== es ===== */
 
-'STR#' 32130 "Langue d'entree" {
+'STR#' 32130 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de entrada"
 /* [1] */			"Detección automática"
@@ -640,7 +640,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32430 "Langue d'entree (aides)" {
+'STR#' 32430 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconoce automáticamente el idioma de los textos del script."
@@ -818,7 +818,7 @@
 
 /* ===== pt ===== */
 
-'STR#' 32140 "Langue d'entree" {
+'STR#' 32140 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Idioma de entrada"
 /* [1] */			"Deteção automática"
@@ -844,7 +844,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32440 "Langue d'entree (aides)" {
+'STR#' 32440 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Reconhece automaticamente o idioma dos textos do script."
@@ -1022,7 +1022,7 @@
 
 /* ===== it ===== */
 
-'STR#' 32150 "Langue d'entree" {
+'STR#' 32150 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lingua di origine"
 /* [1] */			"Rilevamento automatico"
@@ -1048,7 +1048,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32450 "Langue d'entree (aides)" {
+'STR#' 32450 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Riconosce automaticamente la lingua dei testi dello script."
@@ -1226,7 +1226,7 @@
 
 /* ===== hu ===== */
 
-'STR#' 32160 "Langue d'entree" {
+'STR#' 32160 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Bemeneti nyelv"
 /* [1] */			"Automatikus felismerés"
@@ -1252,7 +1252,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32460 "Langue d'entree (aides)" {
+'STR#' 32460 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automatikusan felismeri a szkript szövegeinek nyelvét."
@@ -1430,7 +1430,7 @@
 
 /* ===== cs ===== */
 
-'STR#' 32170 "Langue d'entree" {
+'STR#' 32170 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Vstupní jazyk"
 /* [1] */			"Automatická detekce"
@@ -1456,7 +1456,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32470 "Langue d'entree (aides)" {
+'STR#' 32470 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automaticky rozpozná jazyk textů skriptu."
@@ -1634,7 +1634,7 @@
 
 /* ===== pl ===== */
 
-'STR#' 32180 "Langue d'entree" {
+'STR#' 32180 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Język wejściowy"
 /* [1] */			"Wykrywanie automatyczne"
@@ -1660,7 +1660,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32480 "Langue d'entree (aides)" {
+'STR#' 32480 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Automatycznie rozpoznaje język tekstów skryptu."
@@ -1838,7 +1838,7 @@
 
 /* ===== ru ===== */
 
-'STR#' 32190 "Langue d'entree" {
+'STR#' 32190 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Исходный язык"
 /* [1] */			"Автоопределение"
@@ -1864,7 +1864,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32490 "Langue d'entree (aides)" {
+'STR#' 32490 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Автоматически определяет язык текстов скрипта."
@@ -2042,7 +2042,7 @@
 
 /* ===== uk ===== */
 
-'STR#' 32200 "Langue d'entree" {
+'STR#' 32200 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Мова оригіналу"
 /* [1] */			"Автовизначення"
@@ -2068,7 +2068,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32500 "Langue d'entree (aides)" {
+'STR#' 32500 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Автоматично визначає мову текстів скрипту."
@@ -2246,7 +2246,7 @@
 
 /* ===== el ===== */
 
-'STR#' 32210 "Langue d'entree" {
+'STR#' 32210 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Γλώσσα εισόδου"
 /* [1] */			"Αυτόματος εντοπισμός"
@@ -2272,7 +2272,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32510 "Langue d'entree (aides)" {
+'STR#' 32510 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Αναγνωρίζει αυτόματα τη γλώσσα των κειμένων του σεναρίου."
@@ -2450,7 +2450,7 @@
 
 /* ===== tr ===== */
 
-'STR#' 32220 "Langue d'entree" {
+'STR#' 32220 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Giriş dili"
 /* [1] */			"Otomatik algılama"
@@ -2476,7 +2476,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32520 "Langue d'entree (aides)" {
+'STR#' 32520 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Betik metinlerinin dilini otomatik olarak tanır."
@@ -2654,7 +2654,7 @@
 
 /* ===== nl ===== */
 
-'STR#' 32230 "Langue d'entree" {
+'STR#' 32230 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Brontaal"
 /* [1] */			"Automatisch detecteren"
@@ -2680,7 +2680,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32530 "Langue d'entree (aides)" {
+'STR#' 32530 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Herkent automatisch de taal van de scriptteksten."
@@ -2858,7 +2858,7 @@
 
 /* ===== sv ===== */
 
-'STR#' 32240 "Langue d'entree" {
+'STR#' 32240 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Källspråk"
 /* [1] */			"Automatisk identifiering"
@@ -2884,7 +2884,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32540 "Langue d'entree (aides)" {
+'STR#' 32540 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Känner automatiskt igen språket i skriptets texter."
@@ -3062,7 +3062,7 @@
 
 /* ===== no ===== */
 
-'STR#' 32250 "Langue d'entree" {
+'STR#' 32250 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Kildespråk"
 /* [1] */			"Automatisk gjenkjenning"
@@ -3088,7 +3088,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32550 "Langue d'entree (aides)" {
+'STR#' 32550 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Gjenkjenner automatisk språket i skripttekstene."
@@ -3266,7 +3266,7 @@
 
 /* ===== fi ===== */
 
-'STR#' 32260 "Langue d'entree" {
+'STR#' 32260 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Lähdekieli"
 /* [1] */			"Automaattinen tunnistus"
@@ -3292,7 +3292,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32560 "Langue d'entree (aides)" {
+'STR#' 32560 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"Tunnistaa skriptin tekstien kielen automaattisesti."
@@ -3470,7 +3470,7 @@
 
 /* ===== ja ===== */
 
-'STR#' 32270 "Langue d'entree" {
+'STR#' 32270 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"入力言語"
 /* [1] */			"自動検出"
@@ -3496,7 +3496,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32570 "Langue d'entree (aides)" {
+'STR#' 32570 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"スクリプトのテキストの言語を自動で判別します。"
@@ -3674,7 +3674,7 @@
 
 /* ===== ko ===== */
 
-'STR#' 32280 "Langue d'entree" {
+'STR#' 32280 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"입력 언어"
 /* [1] */			"자동 감지"
@@ -3700,7 +3700,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32580 "Langue d'entree (aides)" {
+'STR#' 32580 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"스크립트 텍스트의 언어를 자동으로 인식합니다."
@@ -3878,7 +3878,7 @@
 
 /* ===== zh ===== */
 
-'STR#' 32290 "Langue d'entree" {
+'STR#' 32290 "Langue d'input" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"输入语言"
 /* [1] */			"自动检测"
@@ -3904,7 +3904,7 @@
 /* [21] */			"中文"
 }
 
-'STR#' 32590 "Langue d'entree (aides)" {
+'STR#' 32590 "Langue d'input (aides)" {
 /* [   ] */		""
 /* [   ] */		""
 /* [1] */		"自动识别脚本文本的语言。"

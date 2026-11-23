@@ -1,6 +1,6 @@
 {
-  "langue_source": "fr",
-  "traductions": {
+  "source_language": "fr",
+  "translations": {
     "en": {
       "Outil de démonstration": "Demo tool",
       "Première ligne": "First line",

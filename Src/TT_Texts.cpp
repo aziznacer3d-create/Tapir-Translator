@@ -1,8 +1,8 @@
 // *****************************************************************************
-// Tapir Translator - texts of the tool's own interface (implementation, see TT_Textes.hpp)
+// Tapir Translator - texts of the tool's own interface (implementation, see TT_Texts.hpp)
 //
 //   ROLE IN THE SYSTEM
-//   The table below holds one row per TT::Texte (same order as the enum, each
+//   The table below holds one row per TT::Text (same order as the enum, each
 //   row preceded by a comment naming it) and 20 columns, one per interface
 //   language: fr en de es pt it hu cs pl ru uk el tr nl sv no fi ja ko zh.
 //   Placeholders such as {v} or {l} are filled in by TxtF.
@@ -10,15 +10,15 @@
 //   table into GRC resources. Translations still to be reviewed by native speakers.
 // *****************************************************************************
 
-#include "TT_Textes.hpp"
+#include "TT_Texts.hpp"
 
 namespace TT {
 
 namespace {
 
-// kTextes[text][interface language index], UTF-8.
-const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
-	// M_ENTREE
+// kTexts[text][interface language index], UTF-8.
+const char* const kTexts[TextCount][InterfaceLanguageCount] = {
+	// M_INPUT
 	{ "Langue d'entrée", "Input language", "Eingabesprache", "Idioma de entrada", "Idioma de entrada", "Lingua di origine",
 	  "Bemeneti nyelv", "Vstupní jazyk", "Język wejściowy", "Исходный язык", "Мова оригіналу", "Γλώσσα εισόδου", "Giriş dili",
 	  "Brontaal", "Källspråk", "Kildespråk", "Lähdekieli", "入力言語", "입력 언어", "输入语言" },
@@ -27,24 +27,24 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Rilevamento automatico", "Automatikus felismerés", "Automatická detekce", "Wykrywanie automatyczne", "Автоопределение",
 	  "Автовизначення", "Αυτόματος εντοπισμός", "Otomatik algılama", "Automatisch detecteren", "Automatisk identifiering",
 	  "Automatisk gjenkjenning", "Automaattinen tunnistus", "自動検出", "자동 감지", "自动检测" },
-	// M_SORTIE
+	// M_OUTPUT
 	{ "Langue de sortie", "Output language", "Ausgabesprache", "Idioma de salida", "Idioma de saída", "Lingua di destinazione",
 	  "Kimeneti nyelv", "Výstupní jazyk", "Język wyjściowy", "Язык перевода", "Мова перекладу", "Γλώσσα εξόδου", "Çıkış dili",
 	  "Doeltaal", "Målspråk", "Målspråk", "Kohdekieli", "出力言語", "출력 언어", "输出语言" },
-	// M_AUCUNE
+	// M_NONE
 	{ "Aucune traduction", "No translation", "Keine Übersetzung", "Sin traducción", "Sem tradução", "Nessuna traduzione",
 	  "Nincs fordítás", "Bez překladu", "Bez tłumaczenia", "Без перевода", "Без перекладу", "Χωρίς μετάφραση", "Çeviri yok",
 	  "Geen vertaling", "Ingen översättning", "Ingen oversettelse", "Ei käännöstä", "翻訳しない", "번역 안 함", "不翻译" },
-	// M_TRADUCTEUR
+	// M_TRANSLATOR
 	{ "Traducteur en ligne", "Online translator", "Online-Übersetzer", "Traductor en línea", "Tradutor online", "Traduttore online",
 	  "Online fordító", "Online překladač", "Tłumacz online", "Онлайн-переводчик", "Онлайн-перекладач", "Διαδικτυακός μεταφραστής",
 	  "Çevrimiçi çevirmen", "Online vertaler", "Onlineöversättare", "Nettbasert oversetter", "Verkkokääntäjä", "オンライン翻訳",
 	  "온라인 번역기", "在线翻译" },
-	// M_SANS_CLE
+	// M_NO_KEY
 	{ "sans clé", "no key", "ohne Schlüssel", "sin clave", "sem chave", "senza chiave", "kulcs nélkül", "bez klíče", "bez klucza",
 	  "без ключа", "без ключа", "χωρίς κλειδί", "anahtarsız", "zonder sleutel", "utan nyckel", "uten nøkkel", "ilman avainta",
 	  "キー不要", "키 없음", "无需密钥" },
-	// M_CLES
+	// M_KEYS
 	{ "Clés des traducteurs...", "Translator keys...", "Übersetzer-Schlüssel...", "Claves de los traductores...",
 	  "Chaves dos tradutores...", "Chiavi dei traduttori...", "Fordítói kulcsok...", "Klíče překladačů...", "Klucze tłumaczy...",
 	  "Ключи переводчиков...", "Ключі перекладачів...", "Κλειδιά μεταφραστών...", "Çevirmen anahtarları...", "Vertaalsleutels...",
@@ -57,7 +57,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	// M_OPTIONS
 	{ "Options", "Options", "Optionen", "Opciones", "Opções", "Opzioni", "Beállítások", "Možnosti", "Opcje", "Параметры",
 	  "Параметри", "Επιλογές", "Seçenekler", "Opties", "Alternativ", "Alternativer", "Asetukset", "オプション", "옵션", "选项" },
-	// M_EN_LIGNE
+	// M_ONLINE
 	{ "Traduction en ligne (textes hors dictionnaire)", "Online translation (texts not in dictionaries)",
 	  "Online-Übersetzung (Texte außerhalb der Wörterbücher)", "Traducción en línea (textos fuera de los diccionarios)",
 	  "Tradução online (textos fora dos dicionários)", "Traduzione online (testi non nei dizionari)",
@@ -67,20 +67,20 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Online vertaling (teksten buiten de woordenboeken)", "Onlineöversättning (texter utanför ordlistorna)",
 	  "Nettbasert oversettelse (tekster utenfor ordlistene)", "Verkkokäännös (sanastojen ulkopuoliset tekstit)",
 	  "オンライン翻訳（辞書にないテキスト）", "온라인 번역(사전에 없는 텍스트)", "在线翻译（词典以外的文本）" },
-	// M_COLLECTE
+	// M_COLLECT
 	{ "Collecter les textes non traduits", "Collect untranslated texts", "Nicht übersetzte Texte sammeln",
 	  "Recopilar textos sin traducir", "Recolher textos não traduzidos", "Raccogli i testi non tradotti",
 	  "Fordítatlan szövegek gyűjtése", "Shromažďovat nepřeložené texty", "Zbieraj nieprzetłumaczone teksty",
 	  "Собирать непереведённые тексты", "Збирати неперекладені тексти", "Συλλογή μη μεταφρασμένων κειμένων",
 	  "Çevrilmemiş metinleri topla", "Onvertaalde teksten verzamelen", "Samla oöversatta texter", "Samle uoversatte tekster",
 	  "Kerää kääntämättömät tekstit", "未翻訳のテキストを収集", "번역되지 않은 텍스트 수집", "收集未翻译的文本" },
-	// M_DOSSIER
+	// M_FOLDER
 	{ "Ouvrir le dossier des dictionnaires", "Open the dictionaries folder", "Wörterbuchordner öffnen",
 	  "Abrir la carpeta de diccionarios", "Abrir a pasta dos dicionários", "Apri la cartella dei dizionari", "Szótármappa megnyitása",
 	  "Otevřít složku slovníků", "Otwórz folder słowników", "Открыть папку словарей", "Відкрити папку словників",
 	  "Άνοιγμα φακέλου λεξικών", "Sözlük klasörünü aç", "Map met woordenboeken openen", "Öppna mappen med ordlistor",
 	  "Åpne mappen med ordlister", "Avaa sanastokansio", "辞書フォルダーを開く", "사전 폴더 열기", "打开词典文件夹" },
-	// M_ETAT
+	// M_STATUS
 	{ "État de Tapir Translator (Rapport de session)", "Tapir Translator status (Session Report)",
 	  "Status von Tapir Translator (Sitzungsbericht)", "Estado de Tapir Translator (Informe de sesión)",
 	  "Estado do Tapir Translator (Relatório da sessão)", "Stato di Tapir Translator (Rapporto di sessione)",
@@ -113,7 +113,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Känner automatiskt igen språket i skriptets texter.", "Gjenkjenner automatisk språket i skripttekstene.",
 	  "Tunnistaa skriptin tekstien kielen automaattisesti.", "スクリプトのテキストの言語を自動で判別します。",
 	  "스크립트 텍스트의 언어를 자동으로 인식합니다.", "自动识别脚本文本的语言。" },
-	// P_ENTREE
+	// P_INPUT
 	{ "Langue dans laquelle les scripts sont écrits.", "Language the scripts are written in.",
 	  "Sprache, in der die Skripte geschrieben sind.", "Idioma en que están escritos los scripts.",
 	  "Idioma em que os scripts estão escritos.", "Lingua in cui sono scritti gli script.", "A szkriptek nyelve.",
@@ -121,7 +121,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Мова, якою написані скрипти.", "Γλώσσα στην οποία είναι γραμμένα τα σενάρια.", "Betiklerin yazıldığı dil.",
 	  "Taal waarin de scripts geschreven zijn.", "Språket som skripten är skrivna på.", "Språket skriptene er skrevet på.",
 	  "Kieli, jolla skriptit on kirjoitettu.", "スクリプトが書かれている言語。", "스크립트가 작성된 언어입니다.", "脚本所用的语言。" },
-	// P_AUCUNE
+	// P_NONE
 	{ "Affiche les scripts tels qu'ils sont écrits.", "Shows the scripts as they are written.",
 	  "Zeigt die Skripte so, wie sie geschrieben sind.", "Muestra los scripts tal como están escritos.",
 	  "Mostra os scripts tal como estão escritos.", "Mostra gli script così come sono scritti.",
@@ -131,7 +131,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Toont de scripts zoals ze geschreven zijn.", "Visar skripten som de är skrivna.", "Viser skriptene slik de er skrevet.",
 	  "Näyttää skriptit sellaisina kuin ne on kirjoitettu.", "スクリプトを書かれたとおりに表示します。",
 	  "스크립트를 작성된 그대로 표시합니다.", "按原样显示脚本。" },
-	// P_SORTIE
+	// P_OUTPUT
 	{ "Langue affichée dans les scripts, en direct (fenêtres ouvertes comprises).",
 	  "Language displayed in the scripts, live (open windows included).",
 	  "In den Skripten angezeigte Sprache, sofort (auch geöffnete Fenster).",
@@ -147,7 +147,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Språk som vises i skriptene, umiddelbart (også åpne vinduer).", "Skripteissä näytettävä kieli, heti (myös avoimet ikkunat).",
 	  "スクリプトに表示する言語（開いているウィンドウにも即時反映）。", "스크립트에 표시되는 언어(열린 창에도 즉시 적용).",
 	  "脚本中显示的语言（即时生效，包括已打开的窗口）。" },
-	// P_TRADUCTEUR
+	// P_TRANSLATOR
 	{ "Traducteur des textes absents des dictionnaires (clé à saisir dans Clés des traducteurs).",
 	  "Translator for texts not in the dictionaries (enter its key in Translator keys).",
 	  "Übersetzer für Texte außerhalb der Wörterbücher (Schlüssel unter Übersetzer-Schlüssel eingeben).",
@@ -165,7 +165,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Kääntäjä sanastojen ulkopuolisille teksteille (avain: Kääntäjien avaimet).",
 	  "辞書にないテキストの翻訳サービス（キーは「翻訳サービスのキー」で入力）。", "사전에 없는 텍스트용 번역기(키는 번역기 키에서 입력).",
 	  "词典以外文本使用的翻译服务（在“翻译服务密钥”中输入密钥）。" },
-	// P_CLES
+	// P_KEYS
 	{ "Ouvre cles.json : les clés restent sur ce poste, les scripts ne les voient jamais.",
 	  "Opens cles.json: the keys stay on this computer, scripts never see them.",
 	  "Öffnet cles.json: Die Schlüssel bleiben auf diesem Rechner, Skripte sehen sie nie.",
@@ -205,7 +205,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Avaa corrections.json-tiedoston: verkkokäännöksissä korjattavat termit, käytössä heti.",
 	  "corrections.json を開きます。オンライン翻訳で修正する用語で、すぐに反映されます。",
 	  "corrections.json을 엽니다. 온라인 번역에서 고칠 용어이며 즉시 적용됩니다.", "打开 corrections.json：需在在线翻译中更正的术语，立即生效。" },
-	// P_EN_LIGNE
+	// P_ONLINE
 	{ "Les textes absents des dictionnaires sont traduits en ligne puis gardés en cache sur ce poste.",
 	  "Texts not in the dictionaries are translated online, then cached on this computer.",
 	  "Texte außerhalb der Wörterbücher werden online übersetzt und auf diesem Rechner zwischengespeichert.",
@@ -225,7 +225,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Sanastojen ulkopuoliset tekstit käännetään verkossa ja tallennetaan tälle koneelle.",
 	  "辞書にないテキストはオンラインで翻訳され、このコンピューターにキャッシュされます。",
 	  "사전에 없는 텍스트는 온라인으로 번역된 후 이 컴퓨터에 캐시됩니다.", "词典以外的文本在线翻译后缓存在本机。" },
-	// P_COLLECTE
+	// P_COLLECT
 	{ "Note les textes sans traduction dans le dossier manquants.", "Records texts without translation in the manquants folder.",
 	  "Notiert Texte ohne Übersetzung im Ordner manquants.", "Anota los textos sin traducción en la carpeta manquants.",
 	  "Regista os textos sem tradução na pasta manquants.", "Annota i testi senza traduzione nella cartella manquants.",
@@ -236,7 +236,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Antecknar texter utan översättning i mappen manquants.", "Noterer tekster uten oversettelse i mappen manquants.",
 	  "Kirjaa käännöksettömät tekstit manquants-kansioon.", "未翻訳のテキストを manquants フォルダーに記録します。",
 	  "번역이 없는 텍스트를 manquants 폴더에 기록합니다.", "将没有翻译的文本记录到 manquants 文件夹。" },
-	// P_DOSSIER
+	// P_FOLDER
 	{ "Ouvre le dossier de Tapir Translator (dictionnaires, cache, journal).",
 	  "Opens the Tapir Translator folder (dictionaries, cache, log).",
 	  "Öffnet den Ordner von Tapir Translator (Wörterbücher, Cache, Protokoll).",
@@ -252,7 +252,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Öppnar mappen för Tapir Translator (ordlistor, cache, logg).", "Åpner mappen til Tapir Translator (ordlister, hurtigbuffer, logg).",
 	  "Avaa Tapir Translatorin kansion (sanastot, välimuisti, loki).", "Tapir Translator のフォルダーを開きます（辞書、キャッシュ、ログ）。",
 	  "Tapir Translator 폴더를 엽니다(사전, 캐시, 로그).", "打开 Tapir Translator 文件夹（词典、缓存、日志）。" },
-	// P_ETAT
+	// P_STATUS
 	{ "Écrit l'état complet de Tapir Translator dans le Rapport de session.", "Writes the full Tapir Translator status to the Session Report.",
 	  "Schreibt den vollständigen Status in den Sitzungsbericht.", "Escribe el estado completo en el Informe de sesión.",
 	  "Escreve o estado completo no Relatório da sessão.", "Scrive lo stato completo nel Rapporto di sessione.",
@@ -282,13 +282,13 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "メニューとメッセージの言語（メニューは次回の ArchiCAD 起動時に反映）。", "메뉴와 메시지 언어(메뉴는 다음 ArchiCAD 시작 시 적용).",
 	  "菜单和消息的语言（菜单在下次启动 ArchiCAD 时生效）。" },
 
-	// D_TITRE
+	// D_TITLE
 	{ "quota MyMemory atteint", "MyMemory quota reached", "MyMemory-Kontingent erreicht", "Cuota de MyMemory alcanzada",
 	  "Quota do MyMemory atingida", "Quota MyMemory raggiunta", "Elérte a MyMemory keretét", "Kvóta MyMemory vyčerpána",
 	  "Wyczerpano limit MyMemory", "Квота MyMemory исчерпана", "Квоту MyMemory вичерпано", "Εξαντλήθηκε το όριο του MyMemory",
 	  "MyMemory kotası doldu", "MyMemory-quotum bereikt", "MyMemory-kvoten är nådd", "MyMemory-kvoten er nådd",
 	  "MyMemory-kiintiö täynnä", "MyMemory の上限に達しました", "MyMemory 한도 도달", "已达到 MyMemory 配额" },
-	// D_ANONYME
+	// D_ANONYMOUS
 	{ "MyMemory a atteint son quota gratuit anonyme (environ 5 000 caractères par jour).\r\n\r\nAvec une adresse e-mail, MyMemory accorde environ 50 000 caractères par jour. Aucun compte ni mot de passe n'est nécessaire. L'adresse est envoyée à MyMemory avec chaque demande et enregistrée dans cles.json sur ce poste.",
 	  "MyMemory has reached its free anonymous quota (about 5,000 characters per day).\r\n\r\nWith an e-mail address, MyMemory allows about 50,000 characters per day. No account or password is needed. The address is sent to MyMemory with each request and saved in cles.json on this computer.",
 	  "MyMemory hat sein kostenloses anonymes Kontingent erreicht (etwa 5.000 Zeichen pro Tag).\r\n\r\nMit einer E-Mail-Adresse erlaubt MyMemory etwa 50.000 Zeichen pro Tag. Weder Konto noch Passwort sind nötig. Die Adresse wird mit jeder Anfrage an MyMemory gesendet und in cles.json auf diesem Rechner gespeichert.",
@@ -309,7 +309,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "MyMemory の匿名の無料上限（1 日約 5,000 文字）に達しました。\r\n\r\nメールアドレスを登録すると、MyMemory は 1 日約 50,000 文字まで使えます。アカウントやパスワードは不要です。アドレスは毎回の要求とともに MyMemory に送信され、このコンピューターの cles.json に保存されます。",
 	  "MyMemory의 무료 익명 한도(하루 약 5,000자)에 도달했습니다.\r\n\r\n이메일 주소를 입력하면 MyMemory에서 하루 약 50,000자를 사용할 수 있습니다. 계정이나 비밀번호는 필요 없습니다. 주소는 요청할 때마다 MyMemory로 전송되며 이 컴퓨터의 cles.json에 저장됩니다.",
 	  "MyMemory 的匿名免费配额（每天约 5,000 个字符）已用完。\r\n\r\n提供电子邮件地址后，MyMemory 每天允许约 50,000 个字符。无需账户或密码。该地址会随每次请求发送给 MyMemory，并保存在本机的 cles.json 中。" },
-	// D_AVEC_EMAIL
+	// D_WITH_EMAIL
 	{ "MyMemory a atteint aujourd'hui son quota gratuit, même avec votre adresse e-mail (environ 50 000 caractères par jour).\r\n\r\nLes textes déjà traduits restent affichés depuis le cache. Pour le reste : attendez demain, ou choisissez un autre traducteur dans ArchiCAD, menu {menu}.",
 	  "MyMemory has reached today's free quota, even with your e-mail address (about 50,000 characters per day).\r\n\r\nTexts already translated are still shown from the cache. For the rest: wait until tomorrow, or choose another translator in ArchiCAD, menu {menu}.",
 	  "MyMemory hat das heutige kostenlose Kontingent erreicht, auch mit Ihrer E-Mail-Adresse (etwa 50.000 Zeichen pro Tag).\r\n\r\nBereits übersetzte Texte werden weiter aus dem Cache angezeigt. Für den Rest: bis morgen warten oder in ArchiCAD einen anderen Übersetzer wählen, Menü {menu}.",
@@ -330,25 +330,25 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "メールアドレスを登録していても、本日の MyMemory の無料上限（1 日約 50,000 文字）に達しました。\r\n\r\n翻訳済みのテキストはキャッシュから引き続き表示されます。残りは明日までお待ちいただくか、ArchiCAD のメニュー {menu} で別の翻訳サービスを選択してください。",
 	  "이메일 주소를 입력했어도 오늘의 MyMemory 무료 한도(하루 약 50,000자)에 도달했습니다.\r\n\r\n이미 번역된 텍스트는 캐시에서 계속 표시됩니다. 나머지는 내일까지 기다리거나 ArchiCAD의 {menu} 메뉴에서 다른 번역기를 선택하십시오.",
 	  "即使提供了电子邮件地址，今天的 MyMemory 免费配额（每天约 50,000 个字符）也已用完。\r\n\r\n已翻译的文本仍会从缓存中显示。其余文本：请等到明天，或在 ArchiCAD 的 {menu} 菜单中选择其他翻译服务。" },
-	// D_LIBELLE
+	// D_LABEL
 	{ "Adresse e-mail :", "E-mail address:", "E-Mail-Adresse:", "Correo electrónico:", "Endereço de e-mail:", "Indirizzo e-mail:",
 	  "E-mail-cím:", "E-mailová adresa:", "Adres e-mail:", "Адрес эл. почты:", "Адреса ел. пошти:", "Διεύθυνση email:",
 	  "E-posta adresi:", "E-mailadres:", "E-postadress:", "E-postadresse:", "Sähköpostiosoite:", "メールアドレス:", "이메일 주소:",
 	  "电子邮件地址：" },
-	// D_ENREGISTRER
+	// D_SAVE
 	{ "Enregistrer", "Save", "Speichern", "Guardar", "Guardar", "Salva", "Mentés", "Uložit", "Zapisz", "Сохранить", "Зберегти",
 	  "Αποθήκευση", "Kaydet", "Opslaan", "Spara", "Lagre", "Tallenna", "保存", "저장", "保存" },
-	// D_PLUS_TARD
+	// D_LATER
 	{ "Plus tard", "Later", "Später", "Más tarde", "Mais tarde", "Più tardi", "Később", "Později", "Później", "Позже", "Пізніше",
 	  "Αργότερα", "Daha sonra", "Later", "Senare", "Senere", "Myöhemmin", "後で", "나중에", "稍后" },
-	// D_INVALIDE
+	// D_INVALID
 	{ "Adresse e-mail invalide.", "Invalid e-mail address.", "Ungültige E-Mail-Adresse.", "Dirección de correo no válida.",
 	  "Endereço de e-mail inválido.", "Indirizzo e-mail non valido.", "Érvénytelen e-mail-cím.", "Neplatná e-mailová adresa.",
 	  "Nieprawidłowy adres e-mail.", "Неверный адрес эл. почты.", "Неправильна адреса ел. пошти.", "Μη έγκυρη διεύθυνση email.",
 	  "Geçersiz e-posta adresi.", "Ongeldig e-mailadres.", "Ogiltig e-postadress.", "Ugyldig e-postadresse.",
 	  "Virheellinen sähköpostiosoite.", "メールアドレスが正しくありません。", "이메일 주소가 올바르지 않습니다.", "电子邮件地址无效。" },
 
-	// R_DEMARRAGE
+	// R_STARTUP
 	{ "Tapir Translator {v} actif. Langues : {l}.", "Tapir Translator {v} active. Languages: {l}.",
 	  "Tapir Translator {v} aktiv. Sprachen: {l}.", "Tapir Translator {v} activo. Idiomas: {l}.", "Tapir Translator {v} ativo. Idiomas: {l}.",
 	  "Tapir Translator {v} attivo. Lingue: {l}.", "Tapir Translator {v} aktív. Nyelvek: {l}.", "Tapir Translator {v} je aktivní. Jazyky: {l}.",
@@ -356,7 +356,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Tapir Translator {v} ενεργό. Γλώσσες: {l}.", "Tapir Translator {v} etkin. Diller: {l}.", "Tapir Translator {v} actief. Talen: {l}.",
 	  "Tapir Translator {v} aktiv. Språk: {l}.", "Tapir Translator {v} aktiv. Språk: {l}.", "Tapir Translator {v} käytössä. Kielet: {l}.",
 	  "Tapir Translator {v} 有効。言語: {l}", "Tapir Translator {v} 활성. 언어: {l}", "Tapir Translator {v} 已启用。语言：{l}" },
-	// R_INACTIF
+	// R_INACTIVE
 	{ "Tapir Translator {v} INACTIF : voir les erreurs ci-dessus.", "Tapir Translator {v} INACTIVE: see the errors above.",
 	  "Tapir Translator {v} INAKTIV: siehe Fehler oben.", "Tapir Translator {v} INACTIVO: vea los errores anteriores.",
 	  "Tapir Translator {v} INATIVO: veja os erros acima.", "Tapir Translator {v} NON ATTIVO: vedere gli errori sopra.",
@@ -367,7 +367,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Tapir Translator {v} INAKTIV: se felen ovan.", "Tapir Translator {v} INAKTIV: se feilene over.",
 	  "Tapir Translator {v} EI KÄYTÖSSÄ: katso virheet yllä.", "Tapir Translator {v} は無効です。上のエラーを確認してください。",
 	  "Tapir Translator {v} 비활성: 위의 오류를 확인하십시오.", "Tapir Translator {v} 未启用：请查看上方的错误。" },
-	// R_REGLAGES
+	// R_SETTINGS
 	{ "Réglages enregistrés : {l} ; traduction en ligne : {o}. Les scripts ouverts suivent aussitôt.",
 	  "Settings saved: {l}; online translation: {o}. Open scripts follow immediately.",
 	  "Einstellungen gespeichert: {l}; Online-Übersetzung: {o}. Geöffnete Skripte folgen sofort.",
@@ -387,7 +387,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Asetukset tallennettu: {l}; verkkokäännös: {o}. Avoimet skriptit päivittyvät heti.",
 	  "設定を保存しました: {l}、オンライン翻訳: {o}。開いているスクリプトにすぐ反映されます。",
 	  "설정 저장됨: {l}, 온라인 번역: {o}. 열린 스크립트에 즉시 반영됩니다.", "设置已保存：{l}；在线翻译：{o}。已打开的脚本立即更新。" },
-	// R_MEME_LANGUE
+	// R_SAME_LANGUAGE
 	{ "Langue d'entrée = langue de sortie : rien ne sera traduit.", "Input language = output language: nothing will be translated.",
 	  "Eingabesprache = Ausgabesprache: Es wird nichts übersetzt.", "Idioma de entrada = idioma de salida: no se traducirá nada.",
 	  "Idioma de entrada = idioma de saída: nada será traduzido.", "Lingua di origine = lingua di destinazione: non verrà tradotto nulla.",
@@ -398,11 +398,11 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Källspråk = målspråk: inget översätts.", "Kildespråk = målspråk: ingenting blir oversatt.",
 	  "Lähdekieli = kohdekieli: mitään ei käännetä.", "入力言語と出力言語が同じため、翻訳されません。",
 	  "입력 언어와 출력 언어가 같아 번역되지 않습니다.", "输入语言与输出语言相同：不会翻译任何内容。" },
-	// R_OUI
+	// R_YES
 	{ "oui", "yes", "ja", "sí", "sim", "sì", "igen", "ano", "tak", "да", "так", "ναι", "evet", "ja", "ja", "ja", "kyllä", "はい", "예", "是" },
-	// R_NON
+	// R_NO
 	{ "non", "no", "nein", "no", "não", "no", "nem", "ne", "nie", "нет", "ні", "όχι", "hayır", "nee", "nej", "nei", "ei", "いいえ", "아니요", "否" },
-	// R_MOTEUR_LANCE
+	// R_ENGINE_STARTED
 	{ "Traduction en ligne active : {f} ({e}).", "Online translation active: {f} ({e}).", "Online-Übersetzung aktiv: {f} ({e}).",
 	  "Traducción en línea activa: {f} ({e}).", "Tradução online ativa: {f} ({e}).", "Traduzione online attiva: {f} ({e}).",
 	  "Online fordítás aktív: {f} ({e}).", "Online překlad je aktivní: {f} ({e}).", "Tłumaczenie online aktywne: {f} ({e}).",
@@ -410,13 +410,13 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Çevrimiçi çeviri etkin: {f} ({e}).", "Online vertaling actief: {f} ({e}).", "Onlineöversättning aktiv: {f} ({e}).",
 	  "Nettbasert oversettelse aktiv: {f} ({e}).", "Verkkokäännös käytössä: {f} ({e}).", "オンライン翻訳を有効にしました: {f}（{e}）。",
 	  "온라인 번역 활성: {f}({e}).", "在线翻译已启用：{f}（{e}）。" },
-	// R_MOTEUR_ARRETE
+	// R_ENGINE_STOPPED
 	{ "Traduction en ligne arrêtée.", "Online translation stopped.", "Online-Übersetzung beendet.", "Traducción en línea detenida.",
 	  "Tradução online parada.", "Traduzione online interrotta.", "Online fordítás leállítva.", "Online překlad zastaven.",
 	  "Tłumaczenie online zatrzymane.", "Онлайн-перевод остановлен.", "Онлайн-переклад зупинено.", "Η διαδικτυακή μετάφραση σταμάτησε.",
 	  "Çevrimiçi çeviri durduruldu.", "Online vertaling gestopt.", "Onlineöversättning stoppad.", "Nettbasert oversettelse stoppet.",
 	  "Verkkokäännös pysäytetty.", "オンライン翻訳を停止しました。", "온라인 번역이 중지되었습니다.", "在线翻译已停止。" },
-	// R_MOTEUR_INTROUVABLE
+	// R_ENGINE_NOT_FOUND
 	{ "ERREUR : moteur de traduction introuvable ; les textes hors dictionnaire restent dans leur langue.",
 	  "ERROR: translation engine not found; texts not in the dictionaries stay in their language.",
 	  "FEHLER: Übersetzungsmodul nicht gefunden; Texte außerhalb der Wörterbücher bleiben unübersetzt.",
@@ -436,7 +436,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "VIRHE: käännösmoottoria ei löydy; sanastojen ulkopuoliset tekstit jäävät kääntämättä.",
 	  "エラー: 翻訳エンジンが見つかりません。辞書にないテキストは翻訳されません。",
 	  "오류: 번역 엔진을 찾을 수 없습니다. 사전에 없는 텍스트는 번역되지 않습니다.", "错误：找不到翻译引擎；词典以外的文本将保持原文。" },
-	// R_CLES_OUVERT
+	// R_KEYS_OPENED
 	{ "cles.json ouvert dans le Bloc-notes : enregistrez-le, la clé sert dès la traduction suivante.",
 	  "cles.json opened in Notepad: save it, the key is used from the next translation.",
 	  "cles.json im Editor geöffnet: Speichern Sie die Datei, der Schlüssel gilt ab der nächsten Übersetzung.",
@@ -456,7 +456,7 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "cles.json avattu Muistiossa: tallenna se, avain on käytössä seuraavasta käännöksestä alkaen.",
 	  "cles.json をメモ帳で開きました。保存すると、次の翻訳からキーが使われます。",
 	  "cles.json을 메모장에서 열었습니다. 저장하면 다음 번역부터 키가 사용됩니다.", "已在记事本中打开 cles.json：保存后，从下一次翻译起使用该密钥。" },
-	// R_CORRECTIONS_OUVERT
+	// R_CORRECTIONS_OPENED
 	{ "corrections.json ouvert dans le Bloc-notes : enregistrez-le, les fenêtres ouvertes suivent aussitôt.",
 	  "corrections.json opened in Notepad: save it, open windows follow immediately.",
 	  "corrections.json im Editor geöffnet: Speichern Sie die Datei, geöffnete Fenster folgen sofort.",
@@ -497,11 +497,11 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "Tapir Translator の言語: {l}。メッセージはすぐに、メニューは次回の ArchiCAD 起動時に切り替わります。",
 	  "Tapir Translator 언어: {l}. 메시지는 즉시, 메뉴는 다음 ArchiCAD 시작 시 적용됩니다.",
 	  "Tapir Translator 语言：{l}。消息立即生效；菜单在下次启动 ArchiCAD 时生效。" },
-	// R_CLE_OK
+	// R_KEY_OK
 	{ "clé renseignée", "key set", "Schlüssel eingetragen", "clave introducida", "chave indicada", "chiave inserita", "kulcs megadva",
 	  "klíč zadán", "klucz podany", "ключ указан", "ключ вказано", "το κλειδί έχει οριστεί", "anahtar girildi", "sleutel ingevuld",
 	  "nyckel angiven", "nøkkel angitt", "avain annettu", "キー設定済み", "키 입력됨", "已填写密钥" },
-	// R_CLE_A_SAISIR
+	// R_KEY_TO_ENTER
 	{ "CLÉ À SAISIR", "KEY TO ENTER", "SCHLÜSSEL FEHLT", "FALTA LA CLAVE", "FALTA A CHAVE", "CHIAVE MANCANTE", "KULCS HIÁNYZIK",
 	  "CHYBÍ KLÍČ", "BRAK KLUCZA", "НУЖЕН КЛЮЧ", "ПОТРІБЕН КЛЮЧ", "ΛΕΙΠΕΙ ΤΟ ΚΛΕΙΔΙ", "ANAHTAR GİRİLMELİ", "SLEUTEL ONTBREEKT",
 	  "NYCKEL SAKNAS", "NØKKEL MANGLER", "AVAIN PUUTTUU", "キー未設定", "키 입력 필요", "需要填写密钥" },
@@ -511,28 +511,28 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "bez klucza, e-mail podany", "без ключа, почта указана", "без ключа, пошту вказано", "χωρίς κλειδί, email ορίστηκε",
 	  "anahtarsız, e-posta girildi", "zonder sleutel, e-mail ingevuld", "utan nyckel, e-post angiven", "uten nøkkel, e-post angitt",
 	  "ilman avainta, sähköposti annettu", "キー不要、メール設定済み", "키 없음, 이메일 입력됨", "无需密钥，已填写邮箱" },
-	// R_SANS_CLE
+	// R_NO_KEY
 	{ "sans clé (quota anonyme)", "no key (anonymous quota)", "ohne Schlüssel (anonymes Kontingent)", "sin clave (cuota anónima)",
 	  "sem chave (quota anónima)", "senza chiave (quota anonima)", "kulcs nélkül (névtelen keret)", "bez klíče (anonymní kvóta)",
 	  "bez klucza (limit anonimowy)", "без ключа (анонимная квота)", "без ключа (анонімна квота)", "χωρίς κλειδί (ανώνυμο όριο)",
 	  "anahtarsız (anonim kota)", "zonder sleutel (anoniem quotum)", "utan nyckel (anonym kvot)", "uten nøkkel (anonym kvote)",
 	  "ilman avainta (anonyymi kiintiö)", "キー不要（匿名の上限）", "키 없음(익명 한도)", "无需密钥（匿名配额）" },
-	// R_ADRESSE_OK
+	// R_ADDRESS_OK
 	{ "adresse renseignée", "address set", "Adresse eingetragen", "dirección introducida", "endereço indicado", "indirizzo inserito",
 	  "cím megadva", "adresa zadána", "adres podany", "адрес указан", "адресу вказано", "η διεύθυνση έχει οριστεί", "adres girildi",
 	  "adres ingevuld", "adress angiven", "adresse angitt", "osoite annettu", "アドレス設定済み", "주소 입력됨", "已填写地址" },
-	// R_ADRESSE_A_SAISIR
+	// R_ADDRESS_TO_ENTER
 	{ "ADRESSE À SAISIR", "ADDRESS TO ENTER", "ADRESSE FEHLT", "FALTA LA DIRECCIÓN", "FALTA O ENDEREÇO", "INDIRIZZO MANCANTE",
 	  "CÍM HIÁNYZIK", "CHYBÍ ADRESA", "BRAK ADRESU", "НУЖЕН АДРЕС", "ПОТРІБНА АДРЕСА", "ΛΕΙΠΕΙ Η ΔΙΕΥΘΥΝΣΗ", "ADRES GİRİLMELİ",
 	  "ADRES ONTBREEKT", "ADRESS SAKNAS", "ADRESSE MANGLER", "OSOITE PUUTTUU", "アドレス未設定", "주소 입력 필요", "需要填写地址" },
 };
 
 // Language code of each interface index (same order as the columns above).
-const char* const kCodes[NombreLanguesInterface] = { "fr", "en", "de", "es", "pt", "it", "hu", "cs", "pl", "ru",
+const char* const kCodes[InterfaceLanguageCount] = { "fr", "en", "de", "es", "pt", "it", "hu", "cs", "pl", "ru",
 													 "uk", "el", "tr", "nl", "sv", "no", "fi", "ja", "ko", "zh" };
 
 // Name of each interface language, written in that language.
-const char* const kNoms[NombreLanguesInterface] = { "Français", "English", "Deutsch", "Español", "Português", "Italiano", "Magyar",
+const char* const kNames[InterfaceLanguageCount] = { "Français", "English", "Deutsch", "Español", "Português", "Italiano", "Magyar",
 													"Čeština", "Polski", "Русский", "Українська", "Ελληνικά", "Türkçe", "Nederlands",
 													"Svenska", "Norsk", "Suomi", "日本語", "한국어", "中文" };
 
@@ -540,12 +540,12 @@ const char* const kNoms[NombreLanguesInterface] = { "Français", "English", "Deu
 
 
 // Counts the null or empty cells of the table (the test bench requires 0).
-int TextesManquants ()
+int MissingTexts ()
 {
 	int n = 0;
-	for (int t = 0; t < NombreTextes; ++t) {
-		for (int l = 0; l < NombreLanguesInterface; ++l) {
-			if (kTextes[t][l] == nullptr || kTextes[t][l][0] == '\0')
+	for (int t = 0; t < TextCount; ++t) {
+		for (int l = 0; l < InterfaceLanguageCount; ++l) {
+			if (kTexts[t][l] == nullptr || kTexts[t][l][0] == '\0')
 				++n;
 		}
 	}
@@ -554,47 +554,47 @@ int TextesManquants ()
 
 
 // Language code of interface index i ("en" if out of range).
-const char* CodeInterface (int i)
+const char* InterfaceCode (int i)
 {
-	return i >= 0 && i < NombreLanguesInterface ? kCodes[i] : "en";
+	return i >= 0 && i < InterfaceLanguageCount ? kCodes[i] : "en";
 }
 
 
 // Native name of interface index i ("English" if out of range).
-const char* NomInterface (int i)
+const char* InterfaceName (int i)
 {
-	return i >= 0 && i < NombreLanguesInterface ? kNoms[i] : "English";
+	return i >= 0 && i < InterfaceLanguageCount ? kNames[i] : "English";
 }
 
 
-// Looks up one text (see TT_Textes.hpp). Never returns nullptr.
-const char* Txt (Texte t, int langue)
+// Looks up one text (see TT_Texts.hpp). Never returns nullptr.
+const char* Txt (Text t, int language)
 {
 	// Step 1: invalid text identifier -> empty string.
-	if (t < 0 || t >= NombreTextes)
+	if (t < 0 || t >= TextCount)
 		return "";
 	// Step 2: invalid language index -> English (index 1).
-	if (langue < 0 || langue >= NombreLanguesInterface)
-		langue = 1;
+	if (language < 0 || language >= InterfaceLanguageCount)
+		language = 1;
 	// Step 3: the cell, or the English cell if it is empty.
-	const char* r = kTextes[t][langue];
+	const char* r = kTexts[t][language];
 	if (r == nullptr || *r == '\0')
-		r = kTextes[t][1];		// missing cell: English
+		r = kTexts[t][1];		// missing cell: English
 	return r != nullptr ? r : "";
 }
 
 
-// Looks up one text and fills its placeholders (see TT_Textes.hpp). Every occurrence of each
+// Looks up one text and fills its placeholders (see TT_Texts.hpp). Every occurrence of each
 // {key} is replaced; the search resumes after the inserted value, so a value that itself
 // contains the same {key} is not expanded again (no infinite loop).
-std::string TxtF (Texte t, int langue, std::initializer_list<std::pair<const char*, std::string>> valeurs)
+std::string TxtF (Text t, int language, std::initializer_list<std::pair<const char*, std::string>> values)
 {
-	std::string r = Txt (t, langue);
-	for (const auto& v : valeurs) {
-		const std::string cle = std::string ("{") + v.first + "}";
+	std::string r = Txt (t, language);
+	for (const auto& v : values) {
+		const std::string key = std::string ("{") + v.first + "}";
 		size_t p = 0;
-		while ((p = r.find (cle, p)) != std::string::npos) {
-			r.replace (p, cle.size (), v.second);
+		while ((p = r.find (key, p)) != std::string::npos) {
+			r.replace (p, key.size (), v.second);
 			p += v.second.size ();
 		}
 	}
@@ -603,9 +603,9 @@ std::string TxtF (Texte t, int langue, std::initializer_list<std::pair<const cha
 
 
 // Interface index of a language code; unknown (or empty) code -> English (1).
-int IndiceInterface (const std::string& code)
+int InterfaceIndex (const std::string& code)
 {
-	for (int i = 0; i < NombreLanguesInterface; ++i) {
+	for (int i = 0; i < InterfaceLanguageCount; ++i) {
 		if (code == kCodes[i])
 			return i;
 	}
@@ -616,7 +616,7 @@ int IndiceInterface (const std::string& code)
 // Maps the language code of an ArchiCAD localised version to a language code of the tool.
 // Several versions share a language (GER / AUT / CHE -> de, POR / BRA -> pt, CHI / TAI -> zh,
 // INT / USA / UKI / AUS / NZE -> en). Any other version -> "en".
-std::string LangueDepuisArchicad (const std::string& version)
+std::string LanguageFromArchicad (const std::string& version)
 {
 	static const char* const table[][2] = {
 		{ "FRA", "fr" }, { "GER", "de" }, { "AUT", "de" }, { "CHE", "de" }, { "SPA", "es" }, { "POR", "pt" }, { "BRA", "pt" },

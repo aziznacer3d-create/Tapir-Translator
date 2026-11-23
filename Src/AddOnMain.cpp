@@ -7,33 +7,33 @@
 //   WITHOUT modifying those scripts. The pieces fit together like this:
 //
 //   Step 1. At ArchiCAD start-up (the add-on is preloaded), the add-on writes
-//           the translation layer couche\sitecustomize.py (embedded in the
-//           .apx, see TT_Embarque.hpp) and the common dictionary into
-//           %APPDATA%\Tapir Translator (see TT::ExtraireCouche).
-//   Step 2. It puts the "couche" folder at the head of ArchiCAD's own
-//           PYTHONPATH and sets TAPIR_TRANSLATOR_DIR (TT::PreparerEnvironnement).
+//           the translation layer layer\sitecustomize.py (embedded in the
+//           .apx, see TT_Embedded.hpp) and the common dictionary into
+//           %APPDATA%\Tapir Translator (see TT::ExtractLayer).
+//   Step 2. It puts the "layer" folder at the head of ArchiCAD's own
+//           PYTHONPATH and sets TAPIR_TRANSLATOR_DIR (TT::PrepareEnvironment).
 //           Tapir keeps this PYTHONPATH for every script it launches, so Python
 //           imports the layer by itself before the script runs (one single
 //           process, no second script).
 //   Step 3. The "Tapir Translator" menu writes the chosen languages and options
-//           into reglages.json; the layer re-reads that file live, so windows
+//           into settings.json; the layer re-reads that file live, so windows
 //           that are already open switch language too.
 //   Step 4. Optionally ("online translation"), the add-on extracts and starts
-//           the local translation engine TapirTranslatorMoteur.exe (payload
-//           appended to the .apx, see TT_Charge.hpp) and a watchdog thread
+//           the local translation engine TapirTranslatorEngine.exe (payload
+//           appended to the .apx, see TT_Payload.hpp) and a watchdog thread
 //           restarts it if it stops. The layer sends unknown sentences to it.
 //
 //   Every step is traced in the Session Report ("Tapir Translator : ...").
 //   Code that may run outside the main thread (the watchdog) only writes to
-//   journal.txt, never to the ArchiCAD API.
+//   log.txt, never to the ArchiCAD API.
 // *****************************************************************************
 
 #include "APIEnvir.h"
 #include "ACAPinc.h"
 
-#include "TT_Charge.hpp"
-#include "TT_Coeur.hpp"
-#include "TT_Textes.hpp"
+#include "TT_Payload.hpp"
+#include "TT_Core.hpp"
+#include "TT_Texts.hpp"
 #include "Json.hpp"
 
 #include <atomic>
@@ -47,68 +47,70 @@ namespace {
 
 // Language of the tool's own interface: ArchiCAD's language (version code FRA, GER...) unless
 // another one is chosen in the menu. Both indices below are interface indices (0 = fr, 1 = en ...,
-// see TT_Textes.hpp).
-// - g_langueMenus: menus are registered only once, at start-up, in the language of that moment
+// see TT_Texts.hpp).
+// - g_menuLanguage: menus are registered only once, at start-up, in the language of that moment
 //   (ArchiCAD fixes them until the next start), so this value never changes afterwards.
-// - g_langueMessages: Session Report messages follow a change immediately.
-// g_versionArchicad holds ArchiCAD's version/language code, read in CheckEnvironment.
-std::string g_versionArchicad;
-int			g_langueMenus = 1;
-int			g_langueMessages = 1;
+// - g_messageLanguage: Session Report messages follow a change immediately.
+// g_archicadVersion holds ArchiCAD's version/language code, read in CheckEnvironment.
+std::string g_archicadVersion;
+int			g_menuLanguage = 1;
+int			g_messageLanguage = 1;
 
 // Resource IDs of the five menus. The menus are generated at build time
-// (RFIX/Tapir_TranslatorMenus.grc, by Tools/GenererMenus.cpp) once per interface language:
-// menu ID = BaseMenus (language) + 0..4, and its status-bar help strings are at + DecalageAides.
-// These are functions (not constants) because g_langueMenus is only known in RegisterInterface.
+// (RFIX/Tapir_TranslatorMenus.grc, by Tools/GenerateMenus.cpp) once per interface language:
+// menu ID = MenuBase (language) + 0..4, and its status-bar help strings are at + HelpOffset.
+// These are functions (not constants) because g_menuLanguage is only known in RegisterInterface.
 // First menu registration error (reported by Initialize, since RegisterInterface must not fail).
-GSErrCode g_erreurMenus = NoError;
-short	  g_menuEnErreur = 0;
-// Result of every menu registration ("32100=0 32101=0 ..."), written to journal.txt by Initialize.
-std::string g_traceMenus;
+GSErrCode g_menuError = NoError;
+short	  g_failedMenu = 0;
+// Result of every menu registration ("32100=0 32101=0 ..."), written to log.txt by Initialize.
+std::string g_menuTrace;
+// Conversions of old data made before the Session Report is usable (reported by Start).
+std::vector<std::wstring> g_migration;
 
-short kMenuEntree	  () { return TT::BaseMenus (g_langueMenus) + 0; }	// input language: item i = TT::Langues[i - 1] (1 = automatic detection)
-short kMenuSortie	  () { return TT::BaseMenus (g_langueMenus) + 1; }	// output language: item i = TT::Langues[i - 1] (1 = no translation)
-short kMenuCommandes  () { return TT::BaseMenus (g_langueMenus) + 2; }	// "Options" menu (items listed below)
-short kMenuTraducteur () { return TT::BaseMenus (g_langueMenus) + 3; }	// online translator: item i = TT::Fournisseurs[i - 1]
-short kMenuInterface  () { return TT::BaseMenus (g_langueMenus) + 4; }	// tool language: 1 = same as ArchiCAD, i = TT::Langues[i - 1]
+short kMenuInput	  () { return TT::MenuBase (g_menuLanguage) + 0; }	// input language: item i = TT::Languages[i - 1] (1 = automatic detection)
+short kMenuOutput	  () { return TT::MenuBase (g_menuLanguage) + 1; }	// output language: item i = TT::Languages[i - 1] (1 = no translation)
+short kMenuCommands  () { return TT::MenuBase (g_menuLanguage) + 2; }	// "Options" menu (items listed below)
+short kMenuTranslator () { return TT::MenuBase (g_menuLanguage) + 3; }	// online translator: item i = TT::Providers[i - 1]
+short kMenuInterface  () { return TT::MenuBase (g_menuLanguage) + 4; }	// tool language: 1 = same as ArchiCAD, i = TT::Languages[i - 1]
 // Item indices (1-based) inside the "Options" menu; item 3 is a separator.
-constexpr Int32 kAutomatique   = 1;
-constexpr Int32 kCollecte	   = 2;
-constexpr Int32 kOuvrirDossier = 4;
-constexpr Int32 kEtat		   = 5;
+constexpr Int32 kAutomatic   = 1;
+constexpr Int32 kCollect	   = 2;
+constexpr Int32 kOpenFolder = 4;
+constexpr Int32 kStatus		   = 5;
 // Item indices inside the "Online translator" menu, after the 5 providers and a separator (item 6).
-constexpr Int32 kCles		   = 7;
+constexpr Int32 kKeys		   = 7;
 constexpr Int32 kCorrections   = 8;
 
 // Returns the interface index (0 = fr ... 19 = zh) of the tool's own language.
-//   choix: the "interface" setting of reglages.json, a language code; "" means "same as
+//   choice: the "interface" setting of settings.json, a language code; "" means "same as
 //          ArchiCAD", in which case the code is derived from ArchiCAD's version code.
-// Unknown codes fall back to English (see TT::IndiceInterface).
-int LangueOutil (const std::string& choix)
+// Unknown codes fall back to English (see TT::InterfaceIndex).
+int ToolLanguage (const std::string& choice)
 {
-	return TT::IndiceInterface (choix.empty () ? TT::LangueDepuisArchicad (g_versionArchicad) : choix);
+	return TT::InterfaceIndex (choice.empty () ? TT::LanguageFromArchicad (g_archicadVersion) : choice);
 }
 
 // Global state of the add-on (main thread only, except the engine variables below).
-std::wstring g_racine;		// working folder %APPDATA%\Tapir Translator ("" if APPDATA is missing)
-TT::Reglages g_reglages;	// in-memory copy of reglages.json, edited by the menu commands
-bool		 g_pret = false;	// translation layer and environment are in place
+std::wstring g_root;		// working folder %APPDATA%\Tapir Translator ("" if APPDATA is missing)
+TT::Settings g_settings;	// in-memory copy of settings.json, edited by the menu commands
+bool		 g_ready = false;	// translation layer and environment are in place
 
-// Engine (TapirTranslatorMoteur.exe) and its watchdog: if the process stops while online
+// Engine (TapirTranslatorEngine.exe) and its watchdog: if the process stops while online
 // translation is wanted, a background thread restarts it (that thread never calls the
-// ArchiCAD API: it logs to journal.txt). g_verrou protects g_moteur, g_ligneMoteur and
-// g_dossierLancement, which are shared between the main thread and the watchdog.
-std::mutex			g_verrou;
-HANDLE				g_moteur = nullptr;	// process handle of the running engine (nullptr = none)
-std::wstring		g_ligneMoteur;		// engine command line (reused for restarts)
-std::wstring		g_dossierLancement;	// engine working directory (the folder of the .exe)
-std::atomic<bool>	g_moteurVoulu { false };	// true while the engine should be kept running
-std::thread			g_veille;			// watchdog thread (runs Veiller)
+// ArchiCAD API: it logs to log.txt). g_lock protects g_engine, g_engineCommandLine and
+// g_launchFolder, which are shared between the main thread and the watchdog.
+std::mutex			g_lock;
+HANDLE				g_engine = nullptr;	// process handle of the running engine (nullptr = none)
+std::wstring		g_engineCommandLine;		// engine command line (reused for restarts)
+std::wstring		g_launchFolder;	// engine working directory (the folder of the .exe)
+std::atomic<bool>	g_engineWanted { false };	// true while the engine should be kept running
+std::thread			g_watchdog;			// watchdog thread (runs Watch)
 
 // Converts a wide (UTF-16) string to an ArchiCAD GS::UniString, going through UTF-8.
-GS::UniString Uni (const std::wstring& texte)
+GS::UniString Uni (const std::wstring& text)
 {
-	return GS::UniString (TT::Utf8 (texte).c_str (), CC_UTF8);
+	return GS::UniString (TT::Utf8 (text).c_str (), CC_UTF8);
 }
 
 // Converts a UTF-8 std::string to a GS::UniString.
@@ -117,144 +119,144 @@ GS::UniString Uni (const std::string& utf8)
 	return GS::UniString (utf8.c_str (), CC_UTF8);
 }
 
-void Journal (const std::string& ligne);	// defined below (journal.txt)
+void Log (const std::string& line);	// defined below (log.txt)
 
 // Writes one line to ArchiCAD's Session Report, prefixed with "Tapir Translator : ", so that
 // the user can copy the whole trace. Main thread only (ArchiCAD API call).
-void Rapport (const GS::UniString& ligne)
+void Report (const GS::UniString& line)
 {
 	// Step 1: the "%T" format passes the line through unchanged: accented characters are kept and
 	// a '%' inside a file path is not interpreted as a printf directive.
-	const GS::UniString texte = GS::UniString ("Tapir Translator : ") + ligne;
-	ACAPI_WriteReport ("%T", false, texte.ToPrintf ());
-	// Step 2: same line in journal.txt, so that a start-up problem can be diagnosed from the file
+	const GS::UniString text = GS::UniString ("Tapir Translator : ") + line;
+	ACAPI_WriteReport ("%T", false, text.ToPrintf ());
+	// Step 2: same line in log.txt, so that a start-up problem can be diagnosed from the file
 	// without asking the user to copy the Session Report (no-op until the working folder is known).
-	Journal (ligne.ToCStr (0, MaxUSize, CC_UTF8).Get ());
+	Log (line.ToCStr (0, MaxUSize, CC_UTF8).Get ());
 }
 
-// Returns the user-facing text 't' (table in TT_Textes.cpp) in the current message language.
-GS::UniString T (TT::Texte t)
+// Returns the user-facing text 't' (table in TT_Texts.cpp) in the current message language.
+GS::UniString T (TT::Text t)
 {
-	return Uni (std::string (TT::Txt (t, g_langueMessages)));
+	return Uni (std::string (TT::Txt (t, g_messageLanguage)));
 }
 
 // Picks the text of a technical line (diagnostics, system errors), which is not in the 20-language
 // table: French when the message language is French (index 0), English otherwise.
 const char* FE (const char* fr, const char* en)
 {
-	return g_langueMessages == 0 ? fr : en;
+	return g_messageLanguage == 0 ? fr : en;
 }
 
 // Displayable name of a language code, e.g. "Deutsch (de)".
-//   code:   language code from TT::Langues ("" = no specific language)
-//   siVide: text returned when 'code' is empty (e.g. "automatic detection" or "no translation")
+//   code:   language code from TT::Languages ("" = no specific language)
+//   ifEmpty: text returned when 'code' is empty (e.g. "automatic detection" or "no translation")
 // An unknown code is returned as is.
-GS::UniString NomLangue (const std::string& code, TT::Texte siVide)
+GS::UniString LanguageName (const std::string& code, TT::Text ifEmpty)
 {
 	if (code.empty ())
-		return T (siVide);
-	for (int i = 1; i < TT::NombreLangues; ++i) {
-		if (code == TT::Langues[i].code)
-			return Uni (std::string (TT::Langues[i].nom)) + " (" + Uni (code) + ")";
+		return T (ifEmpty);
+	for (int i = 1; i < TT::LanguageCount; ++i) {
+		if (code == TT::Languages[i].code)
+			return Uni (std::string (TT::Languages[i].name)) + " (" + Uni (code) + ")";
 	}
 	return Uni (code);
 }
 
 // Summary of the current language pair for the Session Report: "<input> -> <output>".
-GS::UniString Langues ()
+GS::UniString Languages ()
 {
-	return NomLangue (g_reglages.entree, TT::M_AUTO) + " -> " + NomLangue (g_reglages.langue, TT::M_AUCUNE);
+	return LanguageName (g_settings.input, TT::M_AUTO) + " -> " + LanguageName (g_settings.language, TT::M_NONE);
 }
 
 // Sets or clears the check mark of one menu item.
 //   menu:  menu resource ID (one of the kMenu... functions)
 //   index: 1-based item index inside that menu
-//   coche: true = checked
+//   checked: true = checked
 // The current flags are read first so that only the "checked" bit changes.
-void Cocher (short menu, Int32 index, bool coche)
+void SetChecked (short menu, Int32 index, bool checked)
 {
 	API_MenuItemRef ref = {};
 	ref.menuResID = menu;
 	ref.itemIndex = index;
 	GSFlags flags = 0;
 	ACAPI_MenuItem_GetMenuItemFlags (&ref, &flags);
-	if (coche)
+	if (checked)
 		flags |= API_MenuItemChecked;
 	else
 		flags &= ~API_MenuItemChecked;
 	ACAPI_MenuItem_SetMenuItemFlags (&ref, &flags);
 }
 
-// Updates every check mark of the five menus from g_reglages. Called after each settings change.
-void RafraichirCoches ()
+// Updates every check mark of the five menus from g_settings. Called after each settings change.
+void RefreshCheckMarks ()
 {
-	// Step 1: input / output language menus. Item i + 1 is TT::Langues[i]; i = 0 is the empty code,
+	// Step 1: input / output language menus. Item i + 1 is TT::Languages[i]; i = 0 is the empty code,
 	// i.e. "automatic detection" (input) or "no translation" (output).
-	for (int i = 0; i < TT::NombreLangues; ++i) {
-		Cocher (kMenuEntree (), i + 1, g_reglages.entree == TT::Langues[i].code);
-		Cocher (kMenuSortie (), i + 1, g_reglages.langue == TT::Langues[i].code);
+	for (int i = 0; i < TT::LanguageCount; ++i) {
+		SetChecked (kMenuInput (), i + 1, g_settings.input == TT::Languages[i].code);
+		SetChecked (kMenuOutput (), i + 1, g_settings.language == TT::Languages[i].code);
 	}
 	// Step 2: the two toggles of the "Options" menu.
-	Cocher (kMenuCommandes (), kAutomatique, g_reglages.moteur);
-	Cocher (kMenuCommandes (), kCollecte, g_reglages.collecte);
+	SetChecked (kMenuCommands (), kAutomatic, g_settings.engine);
+	SetChecked (kMenuCommands (), kCollect, g_settings.collect);
 	// Step 3: the selected online translator.
-	for (int i = 0; i < TT::NombreFournisseurs; ++i)
-		Cocher (kMenuTraducteur (), i + 1, g_reglages.fournisseur == TT::Fournisseurs[i].code);
+	for (int i = 0; i < TT::ProviderCount; ++i)
+		SetChecked (kMenuTranslator (), i + 1, g_settings.provider == TT::Providers[i].code);
 	// Step 4: the tool language (item 1, empty code = same as ArchiCAD).
-	for (int i = 0; i < TT::NombreLangues; ++i)
-		Cocher (kMenuInterface (), i + 1, g_reglages.interface == TT::Langues[i].code);
+	for (int i = 0; i < TT::LanguageCount; ++i)
+		SetChecked (kMenuInterface (), i + 1, g_settings.interface == TT::Languages[i].code);
 }
 
 // Renames, during the session, the items of the five registered menus into interface language
-// 'langue' (0 = fr ... 19 = zh), so that changing the tool language does not wait for the next
-// ArchiCAD start. The registered menus keep their resource IDs (those of g_langueMenus); only
+// 'language' (0 = fr ... 19 = zh), so that changing the tool language does not wait for the next
+// ArchiCAD start. The registered menus keep their resource IDs (those of g_menuLanguage); only
 // their texts are replaced by those of the STR# resources of the new language, which have the same
 // layout: string 1 = main menu title, string 2 = submenu title, string k + 2 = item k.
 // Separators ("-") are left alone. The API documents items (index >= 1); index 0 is tried for the
-// submenu title and its result traced in journal.txt (ArchiCAD may refuse it).
-void TraduireMenus (int langue)
+// submenu title and its result traced in log.txt (ArchiCAD may refuse it).
+void TranslateMenus (int language)
 {
-	const short menusEnregistres[5] = { kMenuEntree (), kMenuSortie (), kMenuCommandes (), kMenuTraducteur (), kMenuInterface () };
+	const short registeredMenus[5] = { kMenuInput (), kMenuOutput (), kMenuCommands (), kMenuTranslator (), kMenuInterface () };
 	std::string trace;
 	for (short m = 0; m < 5; ++m) {
-		const short source = static_cast<short> (TT::BaseMenus (langue) + m);	// texts of the new language
+		const short source = static_cast<short> (TT::MenuBase (language) + m);	// texts of the new language
 		// Step 1: the submenu title (string 2), as item 0.
-		GS::UniString texte;
+		GS::UniString text;
 		API_MenuItemRef ref = {};
-		ref.menuResID = menusEnregistres[m];
-		if (RSGetIndString (&texte, source, 2, ACAPI_GetOwnResModule ()) && !texte.IsEmpty ()) {
+		ref.menuResID = registeredMenus[m];
+		if (RSGetIndString (&text, source, 2, ACAPI_GetOwnResModule ()) && !text.IsEmpty ()) {
 			ref.itemIndex = 0;
 			trace += " " + std::to_string (ref.menuResID) + ":0=" +
-					 std::to_string (static_cast<long> (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &texte)));
+					 std::to_string (static_cast<long> (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &text)));
 		}
 		// Step 2: every item, until the resource has no more strings.
-		long erreurs = 0;
+		long errors = 0;
 		for (Int32 k = 1; k < 64; ++k) {
-			texte.Clear ();
-			if (!RSGetIndString (&texte, source, static_cast<short> (k + 2), ACAPI_GetOwnResModule ()) || texte.IsEmpty ())
+			text.Clear ();
+			if (!RSGetIndString (&text, source, static_cast<short> (k + 2), ACAPI_GetOwnResModule ()) || text.IsEmpty ())
 				break;
-			if (texte == "-")
+			if (text == "-")
 				continue;
 			ref.itemIndex = k;
-			if (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &texte) != NoError)
-				++erreurs;
+			if (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &text) != NoError)
+				++errors;
 		}
-		trace += " " + std::to_string (ref.menuResID) + ":items_erreurs=" + std::to_string (erreurs);
+		trace += " " + std::to_string (ref.menuResID) + ":items_erreurs=" + std::to_string (errors);
 	}
-	Journal (std::string ("menus renommes en ") + TT::CodeInterface (langue) + " :" + trace);
+	Log (std::string ("menus renommes en ") + TT::InterfaceCode (language) + " :" + trace);
 	// Step 3: renaming may reset the item flags: put the check marks back.
-	RafraichirCoches ();
+	RefreshCheckMarks ();
 }
 
-// Appends one UTF-8 line to <g_racine>\journal.txt, as "YYYY-MM-DD hh:mm:ss [add-on] <line>".
-// Unlike Rapport, this is safe outside the main thread (pure Win32): the watchdog uses it.
+// Appends one UTF-8 line to <g_root>\log.txt, as "YYYY-MM-DD hh:mm:ss [add-on] <line>".
+// Unlike Report, this is safe outside the main thread (pure Win32): the watchdog uses it.
 // The layer and the engine write to the same file, hence the shared open mode. Errors are ignored.
-void Journal (const std::string& ligne)
+void Log (const std::string& line)
 {
-	if (g_racine.empty ())
+	if (g_root.empty ())
 		return;
 	// Step 1: open in append mode (created if missing), shared with the other writers.
-	HANDLE f = CreateFileW (TT::Joindre (g_racine, L"journal.txt").c_str (), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+	HANDLE f = CreateFileW (TT::Join (g_root, L"log.txt").c_str (), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
 							nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (f == INVALID_HANDLE_VALUE)
 		return;
@@ -264,156 +266,162 @@ void Journal (const std::string& ligne)
 	char date[40];
 	snprintf (date, sizeof (date), "%04u-%02u-%02u %02u:%02u:%02u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
 	// Step 3: write the whole line in one call, then close.
-	const std::string texte = std::string (date) + " [add-on] " + ligne + "\n";
-	DWORD ecrit = 0;
-	WriteFile (f, texte.data (), static_cast<DWORD> (texte.size ()), &ecrit, nullptr);
+	const std::string text = std::string (date) + " [add-on] " + line + "\n";
+	DWORD written = 0;
+	WriteFile (f, text.data (), static_cast<DWORD> (text.size ()), &written, nullptr);
 	CloseHandle (f);
 }
 
 // Display name of an online translator code ("deepl" -> "DeepL"); unknown codes are returned as is.
-GS::UniString NomFournisseur (const std::string& code)
+GS::UniString ProviderName (const std::string& code)
 {
-	for (int i = 0; i < TT::NombreFournisseurs; ++i) {
-		if (code == TT::Fournisseurs[i].code)
-			return GS::UniString (TT::Fournisseurs[i].nom);
+	for (int i = 0; i < TT::ProviderCount; ++i) {
+		if (code == TT::Providers[i].code)
+			return GS::UniString (TT::Providers[i].name);
 	}
 	return Uni (code);
 }
 
-// Describes the state of the credentials of one translator in cles.json, for the Session Report.
+// Describes the state of the credentials of one translator in keys.json, for the Session Report.
 // It never returns the key itself: only whether the expected field is filled in.
-//   code: translator code (TT::Fournisseurs)
+//   code: translator code (TT::Providers)
 // What is expected depends on the service: MyMemory needs nothing (an e-mail raises the quota),
 // LibreTranslate needs a server URL, Microsoft needs a key and a region, the others a key.
-GS::UniString EtatCle (const std::string& code)
+GS::UniString KeyStatus (const std::string& code)
 {
-	// Step 1: read cles.json (it may be missing or edited by hand into invalid JSON).
-	std::string contenu;
-	if (!TT::LireFichier (TT::CheminCles (g_racine), contenu))
-		return FE ("cles.json absent", "cles.json missing");
+	// Step 1: read keys.json (it may be missing or edited by hand into invalid JSON).
+	std::string content;
+	if (!TT::ReadWholeFile (TT::KeysPath (g_root), content))
+		return FE ("keys.json absent", "keys.json missing");
 	// Step 2: parse it, skipping a UTF-8 BOM (Notepad may add one when saving).
-	Json::Valeur v;
-	if (!Json::Lecteur (contenu.compare (0, 3, "\xEF\xBB\xBF") == 0 ? contenu.substr (3) : contenu).Lire (v))
-		return FE ("cles.json illisible (JSON invalide)", "cles.json unreadable (invalid JSON)");
+	Json::Value v;
+	if (!Json::Reader (content.compare (0, 3, "\xEF\xBB\xBF") == 0 ? content.substr (3) : content).Read (v))
+		return FE ("keys.json illisible (JSON invalide)", "keys.json unreadable (invalid JSON)");
 	// Step 3: check the field(s) that this service needs.
-	const Json::Valeur* s = v.Champ (code);
+	const Json::Value* s = v.Field (code);
 	if (code == "mymemory")
-		return s != nullptr && !s->Texte ("email").empty () ? T (TT::R_EMAIL_OK) : T (TT::R_SANS_CLE);
+		return s != nullptr && !s->Text ("email").empty () ? T (TT::R_EMAIL_OK) : T (TT::R_NO_KEY);
 	if (code == "libretranslate")
-		return s != nullptr && !s->Texte ("url").empty () ? T (TT::R_ADRESSE_OK) : T (TT::R_ADRESSE_A_SAISIR);
-	if (s == nullptr || s->Texte ("cle").empty ())
-		return T (TT::R_CLE_A_SAISIR);
-	if (code == "microsoft" && s->Texte ("region").empty ())
-		return T (TT::R_CLE_OK) + FE (", region vide", ", region empty");
-	return T (TT::R_CLE_OK);
+		return s != nullptr && !s->Text ("url").empty () ? T (TT::R_ADDRESS_OK) : T (TT::R_ADDRESS_TO_ENTER);
+	if (s == nullptr || s->Text ("key").empty ())
+		return T (TT::R_KEY_TO_ENTER);
+	if (code == "microsoft" && s->Text ("region").empty ())
+		return T (TT::R_KEY_OK) + FE (", region vide", ", region empty");
+	return T (TT::R_KEY_OK);
 }
 
 // -----------------------------------------------------------------------------
-//  Translation engine (TapirTranslatorMoteur.exe): extraction, launch, watchdog
-//  The engine is a separate local process (127.0.0.1:TT::PortMoteur) that sends the
+//  Translation engine (TapirTranslatorEngine.exe): extraction, launch, watchdog
+//  The engine is a separate local process (127.0.0.1:TT::EnginePort) that sends the
 //  sentences unknown to the dictionaries to the chosen online translator (or, with the
-//  TT_MODELE_LOCAL build option, to an offline model). A crash there never reaches ArchiCAD.
+//  TT_LOCAL_MODEL build option, to an offline model). A crash there never reaches ArchiCAD.
 // -----------------------------------------------------------------------------
 
 // Returns the full path of the .apx itself (it carries the engine, and optionally the model,
-// as a payload appended to the file, see TT_Charge.hpp); "" on failure.
+// as a payload appended to the file, see TT_Payload.hpp); "" on failure.
 // The module is found from the address of this very function, so it works whatever the
 // install folder; UNCHANGED_REFCOUNT avoids having to release the module handle.
-std::wstring CheminApx ()
+std::wstring ApxPath ()
 {
 	HMODULE module = nullptr;
-	wchar_t chemin[MAX_PATH] = {};
+	wchar_t path[MAX_PATH] = {};
 	if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-							reinterpret_cast<LPCWSTR> (&CheminApx), &module) &&
-		GetModuleFileNameW (module, chemin, MAX_PATH) > 0)
-		return chemin;
+							reinterpret_cast<LPCWSTR> (&ApxPath), &module) &&
+		GetModuleFileNameW (module, path, MAX_PATH) > 0)
+		return path;
 	return std::wstring ();
 }
 
-// Base folder under which the payload is extracted: %LOCALAPPDATA%\Tapir Translator\moteur
+// Base folder under which the payload is extracted: %LOCALAPPDATA%\Tapir Translator\engine
 // (each version then goes into its own <hash> sub-folder). LOCALAPPDATA keeps the binaries
-// out of the roaming profile; if it is missing, <g_racine>\moteur is used instead.
-std::wstring BaseExtraction ()
+// out of the roaming profile; if it is missing, <g_root>\engine is used instead.
+std::wstring ExtractionBase ()
 {
-	std::wstring local = TT::LireVariable (L"LOCALAPPDATA");
-	return local.empty () ? TT::Joindre (g_racine, L"moteur") : TT::Joindre (TT::Joindre (local, L"Tapir Translator"), L"moteur");
+	std::wstring local = TT::GetEnvVar (L"LOCALAPPDATA");
+	return local.empty () ? TT::Join (g_root, L"engine") : TT::Join (TT::Join (local, L"Tapir Translator"), L"engine");
 }
 
-std::wstring g_dossierMoteur;	// folder of the extracted payload (engine + optional model); "" = not extracted yet
+std::wstring g_engineFolder;	// folder of the extracted payload (engine + optional model); "" = not extracted yet
 
-// Lists, in order of preference, the paths where TapirTranslatorMoteur.exe is looked for:
+// Lists, in order of preference, the paths where TapirTranslatorEngine.exe is looked for:
 //   1. the engine extracted from the .apx payload (normal case);
-//   2. (development) a "TapirTranslatorMoteur" folder next to the .apx;
-//   3. %APPDATA%\Tapir Translator\moteur.
-// The paths are returned whether or not the files exist (Etat also displays them).
-std::vector<std::wstring> EmplacementsMoteur ()
+//   2. (development) a "TapirTranslatorEngine" folder next to the .apx;
+//   3. %APPDATA%\Tapir Translator\engine.
+// The paths are returned whether or not the files exist (Status also displays them).
+std::vector<std::wstring> EngineLocations ()
 {
 	std::vector<std::wstring> res;
-	if (!g_dossierMoteur.empty ())
-		res.push_back (TT::Joindre (g_dossierMoteur, L"TapirTranslatorMoteur.exe"));
-	const std::wstring apx = CheminApx ();
+	if (!g_engineFolder.empty ())
+		res.push_back (TT::Join (g_engineFolder, L"TapirTranslatorEngine.exe"));
+	const std::wstring apx = ApxPath ();
 	if (!apx.empty ())
-		res.push_back (TT::Joindre (TT::Joindre (apx.substr (0, apx.find_last_of (L"\\/")), L"TapirTranslatorMoteur"), L"TapirTranslatorMoteur.exe"));
-	res.push_back (TT::Joindre (TT::Joindre (g_racine, L"moteur"), L"TapirTranslatorMoteur.exe"));
+		res.push_back (TT::Join (TT::Join (apx.substr (0, apx.find_last_of (L"\\/")), L"TapirTranslatorEngine"), L"TapirTranslatorEngine.exe"));
+	res.push_back (TT::Join (TT::Join (g_root, L"engine"), L"TapirTranslatorEngine.exe"));
 	return res;
 }
 
-// Extracts the payload of the .apx into BaseExtraction ()\<hash> and remembers the folder in
-// g_dossierMoteur. TT::ExtraireCharge does nothing if this version is already fully extracted,
+// Extracts the payload of the .apx into ExtractionBase ()\<hash> and remembers the folder in
+// g_engineFolder. TT::ExtractPayload does nothing if this version is already fully extracted,
 // so the real copy happens only once per version; within a session this function runs once.
-void ExtraireMoteur ()
+void ExtractEngine ()
 {
-	if (!g_dossierMoteur.empty ())
+	if (!g_engineFolder.empty ())
 		return;
 	// Step 1: extract (or find the existing extraction) and trace what happened.
 	std::vector<std::wstring> journal;
-	std::wstring dossier;
-	const bool ok = TT::ExtraireCharge (CheminApx (), BaseExtraction (), dossier, journal);
+	std::wstring folder;
+	const bool ok = TT::ExtractPayload (ApxPath (), ExtractionBase (), folder, journal);
 	for (const std::wstring& l : journal)
-		Rapport (Uni (l));
+		Report (Uni (l));
 	if (!ok)
 		return;
-	g_dossierMoteur = dossier;
+	g_engineFolder = folder;
 	// Step 2: delete the folders of older extracted versions (including the old ~500 MB offline
 	// engine), except the current one. A folder whose engine is still running cannot be deleted
 	// (locked file): it stays, and deletion is retried at the next start.
-	const std::wstring base = BaseExtraction ();
-	const std::wstring garde = dossier.substr (dossier.find_last_of (L"\\/") + 1);
-	for (const std::wstring& nom : TT::ListerDossiers (base)) {
-		if (nom == garde)
+	const std::wstring base = ExtractionBase ();
+	// (versions <= 0.7.5 extracted into ...\Tapir Translator\moteur: that whole folder goes too)
+	const std::wstring oldBase = base.substr (0, base.find_last_of (L"\\/") + 1) + L"moteur";
+	if (TT::FolderExists (oldBase)) {
+		TT::DeleteFolder (oldBase);
+		Report (GS::UniString (TT::FolderExists (oldBase) ? "old engine folder not deleted (in use): " : "old engine folder deleted: ") + Uni (oldBase));
+	}
+	const std::wstring kept = folder.substr (folder.find_last_of (L"\\/") + 1);
+	for (const std::wstring& name : TT::ListFolders (base)) {
+		if (name == kept)
 			continue;
-		const std::wstring ancien = TT::Joindre (base, nom);
-		TT::SupprimerDossier (ancien);
-		Rapport (GS::UniString (TT::DossierExiste (ancien) ? FE ("ancienne version non supprimee (en cours d'utilisation) : ", "old version not deleted (in use): ")
-														   : FE ("ancienne version supprimee : ", "old version deleted: ")) + Uni (ancien));
+		const std::wstring old = TT::Join (base, name);
+		TT::DeleteFolder (old);
+		Report (GS::UniString (TT::FolderExists (old) ? FE ("ancienne version non supprimee (en cours d'utilisation) : ", "old version not deleted (in use): ")
+														   : FE ("ancienne version supprimee : ", "old version deleted: ")) + Uni (old));
 	}
 }
 
 // Returns true if the engine process we started is still alive (zero-timeout wait on its handle).
-bool MoteurEnMarche ()
+bool EngineRunning ()
 {
-	std::lock_guard<std::mutex> verrou (g_verrou);
-	return g_moteur != nullptr && WaitForSingleObject (g_moteur, 0) == WAIT_TIMEOUT;
+	std::lock_guard<std::mutex> lock (g_lock);
+	return g_engine != nullptr && WaitForSingleObject (g_engine, 0) == WAIT_TIMEOUT;
 }
 
-// Starts the engine process with the command line g_ligneMoteur in g_dossierLancement.
-// Must be called with g_verrou held (used by both LancerMoteur and the watchdog).
-//   erreur: receives GetLastError () when the start fails
-// Returns true on success; g_moteur then holds the new process handle (the previous one,
+// Starts the engine process with the command line g_engineCommandLine in g_launchFolder.
+// Must be called with g_lock held (used by both StartEngine and the watchdog).
+//   error: receives GetLastError () when the start fails
+// Returns true on success; g_engine then holds the new process handle (the previous one,
 // if any, is closed).
-bool DemarrerProcessus (DWORD& erreur)
+bool StartProcess (DWORD& error)
 {
 	// Step 1: CreateProcessW may modify the command line, so it gets a writable copy.
-	std::vector<wchar_t> tampon (g_ligneMoteur.begin (), g_ligneMoteur.end ());
-	tampon.push_back (L'\0');
+	std::vector<wchar_t> buffer (g_engineCommandLine.begin (), g_engineCommandLine.end ());
+	buffer.push_back (L'\0');
 	// Step 2: start without a console window, at below-normal priority so that ArchiCAD
 	// stays responsive.
 	STARTUPINFOW si = {};
 	si.cb = sizeof (si);
 	PROCESS_INFORMATION pi = {};
-	if (!CreateProcessW (nullptr, tampon.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
-						 nullptr, g_dossierLancement.c_str (), &si, &pi)) {
-		erreur = GetLastError ();
+	if (!CreateProcessW (nullptr, buffer.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
+						 nullptr, g_launchFolder.c_str (), &si, &pi)) {
+		error = GetLastError ();
 		return false;
 	}
 	// Step 3: only the process handle is kept.
@@ -421,323 +429,328 @@ bool DemarrerProcessus (DWORD& erreur)
 	// Step 4: the engine's "MyMemory quota" window must be allowed to come to the foreground.
 	AllowSetForegroundWindow (pi.dwProcessId);
 	// Step 5: replace the handle of the previous (dead) process.
-	if (g_moteur != nullptr)
-		CloseHandle (g_moteur);
-	g_moteur = pi.hProcess;
+	if (g_engine != nullptr)
+		CloseHandle (g_engine);
+	g_engine = pi.hProcess;
 	return true;
 }
 
 // Watchdog thread body: restarts the engine whenever it stops (crash, killed process...)
-// for as long as g_moteurVoulu is true. Runs outside the main thread, so it only logs to
-// journal.txt (Journal), never to the Session Report.
+// for as long as g_engineWanted is true. Runs outside the main thread, so it only logs to
+// log.txt (Log), never to the Session Report.
 // Exit code 2 means the port is already taken by the engine of another ArchiCAD instance:
 // in that case the restart is retried much later (30 s).
-void Veiller ()
+void Watch ()
 {
-	int relances = 0;							// restarts in the current one-hour window
-	ULONGLONG debutFenetre = GetTickCount64 ();	// start of that window (ms)
-	while (g_moteurVoulu) {
+	int restarts = 0;							// restarts in the current one-hour window
+	ULONGLONG windowStart = GetTickCount64 ();	// start of that window (ms)
+	while (g_engineWanted) {
 		// Step 1: take a snapshot of the process handle under the lock.
 		HANDLE h = nullptr;
 		{
-			std::lock_guard<std::mutex> verrou (g_verrou);
-			h = g_moteur;
+			std::lock_guard<std::mutex> lock (g_lock);
+			h = g_engine;
 		}
 		// Step 2: wait up to 500 ms for the process to end; still running -> loop again
-		// (this also re-checks g_moteurVoulu twice a second).
+		// (this also re-checks g_engineWanted twice a second).
 		if (h != nullptr && WaitForSingleObject (h, 500) == WAIT_TIMEOUT)
 			continue;
-		if (!g_moteurVoulu)
+		if (!g_engineWanted)
 			break;
 		// Step 3: the engine has stopped: read its exit code.
 		DWORD code = 0;
 		if (h != nullptr)
 			GetExitCodeProcess (h, &code);
 		// Step 4: restart budget of 20 per hour; the counter is reset when the window expires.
-		if (GetTickCount64 () - debutFenetre > 3600000ull) {
-			debutFenetre = GetTickCount64 ();
-			relances = 0;
+		if (GetTickCount64 () - windowStart > 3600000ull) {
+			windowStart = GetTickCount64 ();
+			restarts = 0;
 		}
-		if (relances >= 20) {
-			Journal ("moteur arrete 20 fois en une heure : surveillance suspendue (Options > Traduction en ligne pour relancer)");
+		if (restarts >= 20) {
+			Log ("moteur arrete 20 fois en une heure : surveillance suspendue (Options > Traduction en ligne pour relancer)");
 			return;
 		}
 		// Step 5: back-off delay: 30 s if the port is taken (code 2), otherwise 1 s, 2 s, 3 s...
-		// growing with each restart. The wait is sliced in 250 ms steps so that ArreterMoteur
-		// (which clears g_moteurVoulu and joins this thread) is never blocked for long.
-		const DWORD attente = code == 2 ? 30000 : static_cast<DWORD> (1000 * (1 + relances));
-		Journal ("moteur arrete (code " + std::to_string (code) + ") : relance dans " + std::to_string (attente / 1000) + " s");
-		for (DWORD t = 0; t < attente && g_moteurVoulu; t += 250)
+		// growing with each restart. The wait is sliced in 250 ms steps so that StopEngine
+		// (which clears g_engineWanted and joins this thread) is never blocked for long.
+		const DWORD wait = code == 2 ? 30000 : static_cast<DWORD> (1000 * (1 + restarts));
+		Log ("moteur arrete (code " + std::to_string (code) + ") : relance dans " + std::to_string (wait / 1000) + " s");
+		for (DWORD t = 0; t < wait && g_engineWanted; t += 250)
 			Sleep (250);
-		if (!g_moteurVoulu)
+		if (!g_engineWanted)
 			break;
 		// Step 6: restart with the same command line, under the lock.
-		std::lock_guard<std::mutex> verrou (g_verrou);
-		DWORD erreur = 0;
-		if (DemarrerProcessus (erreur))
-			Journal ("moteur relance");
+		std::lock_guard<std::mutex> lock (g_lock);
+		DWORD error = 0;
+		if (StartProcess (error))
+			Log ("moteur relance");
 		else
-			Journal ("relance du moteur impossible (erreur Windows " + std::to_string (erreur) + ")");
-		++relances;
+			Log ("relance du moteur impossible (erreur Windows " + std::to_string (error) + ")");
+		++restarts;
 	}
 }
 
 // Stops the engine and its watchdog. Safe to call when nothing is running.
-void ArreterMoteur ()
+void StopEngine ()
 {
 	// Step 1: tell the watchdog to stop, then wait for its thread to finish
 	// (it must not restart the engine we are about to kill).
-	g_moteurVoulu = false;
-	if (g_veille.joinable ())
-		g_veille.join ();
+	g_engineWanted = false;
+	if (g_watchdog.joinable ())
+		g_watchdog.join ();
 	// Step 2: kill the process if it is still alive, release its handle, and report it.
-	std::lock_guard<std::mutex> verrou (g_verrou);
-	if (g_moteur != nullptr) {
-		if (WaitForSingleObject (g_moteur, 0) == WAIT_TIMEOUT)
-			TerminateProcess (g_moteur, 0);
-		CloseHandle (g_moteur);
-		g_moteur = nullptr;
-		Rapport (T (TT::R_MOTEUR_ARRETE));
+	std::lock_guard<std::mutex> lock (g_lock);
+	if (g_engine != nullptr) {
+		if (WaitForSingleObject (g_engine, 0) == WAIT_TIMEOUT)
+			TerminateProcess (g_engine, 0);
+		CloseHandle (g_engine);
+		g_engine = nullptr;
+		Report (T (TT::R_ENGINE_STOPPED));
 	}
 }
 
 // Starts the translation engine (if not already running) and its watchdog thread.
 // Called at start-up when online translation is enabled, and from the menu commands.
 // Every outcome is traced in the Session Report.
-void LancerMoteur ()
+void StartEngine ()
 {
 	// Step 1: nothing to do if the engine is already running and supervised; otherwise clean
 	// up any half-state (dead process, watchdog still alive) before starting again.
-	if (MoteurEnMarche () && g_moteurVoulu)
+	if (EngineRunning () && g_engineWanted)
 		return;
-	ArreterMoteur ();
+	StopEngine ();
 	// Step 2: make sure the payload of the .apx is extracted.
-	ExtraireMoteur ();
-	// Step 3: take the first engine executable that exists (see EmplacementsMoteur);
+	ExtractEngine ();
+	// Step 3: take the first engine executable that exists (see EngineLocations);
 	// if none is found, report every path that was tried.
 	std::wstring exe;
-	for (const std::wstring& e : EmplacementsMoteur ()) {
-		if (TT::FichierExiste (e)) {
+	for (const std::wstring& e : EngineLocations ()) {
+		if (TT::FileExists (e)) {
 			exe = e;
 			break;
 		}
 	}
 	if (exe.empty ()) {
-		Rapport (T (TT::R_MOTEUR_INTROUVABLE));
-		for (const std::wstring& e : EmplacementsMoteur ())
-			Rapport (GS::UniString ("  ") + Uni (e));
+		Report (T (TT::R_ENGINE_NOT_FOUND));
+		for (const std::wstring& e : EngineLocations ())
+			Report (GS::UniString ("  ") + Uni (e));
 		return;
 	}
-	// Step 4: the engine reads cles.json at each request: create the template if it is missing
+	// Step 4: the engine reads keys.json at each request: create the template if it is missing
 	// (an error here is not fatal, the engine then simply finds no key).
-	const std::wstring dossier = exe.substr (0, exe.find_last_of (L"\\/"));
-	std::wstring erreurCles;
-	TT::CreerModeleCles (g_racine, erreurCles);
+	const std::wstring folder = exe.substr (0, exe.find_last_of (L"\\/"));
+	std::wstring keysError;
+	TT::CreateKeysTemplate (g_root, keysError);
 	// Step 5: build the command line:
 	//   --port      local port the layer connects to
-	//   --cles      path of cles.json (keys never pass through the scripts)
+	//   --keys      path of keys.json (keys never pass through the scripts)
 	//   --parent    ArchiCAD's process ID (the engine exits when ArchiCAD exits)
-	//   --journal   shared log file
+	//   --log   shared log file
 	//   --interface language code of the tool (for the MyMemory quota window)
-	std::wstring ligne = L"\"" + exe + L"\" --port " + std::to_wstring (TT::PortMoteur) + L" --cles \"" + TT::CheminCles (g_racine) +
-						 L"\" --parent " + std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" +
-						 TT::Joindre (g_racine, L"journal.txt") + L"\" --interface " +
-						 TT::DepuisUtf8 (TT::CodeInterface (g_langueMessages));
-	// Step 6: pass the offline model only if the .apx carries one (build option TT_MODELE_LOCAL).
-	const std::wstring modele = TT::Joindre (dossier, L"modele");
-	if (TT::DossierExiste (modele))
-		ligne += L" --modele \"" + modele + L"\"";
+	std::wstring line = L"\"" + exe + L"\" --port " + std::to_wstring (TT::EnginePort) + L" --keys \"" + TT::KeysPath (g_root) +
+						 L"\" --parent " + std::to_wstring (GetCurrentProcessId ()) + L" --log \"" +
+						 TT::Join (g_root, L"log.txt") + L"\" --interface " +
+						 TT::FromUtf8 (TT::InterfaceCode (g_messageLanguage));
+	// Step 6: pass the offline model only if the .apx carries one (build option TT_LOCAL_MODEL).
+	const std::wstring model = TT::Join (folder, L"model");
+	if (TT::FolderExists (model))
+		line += L" --model \"" + model + L"\"";
 	// Step 7: remember the command line and folder (the watchdog reuses them) and start the
 	// process, all under the lock.
-	DWORD erreur = 0;
+	DWORD error = 0;
 	{
-		std::lock_guard<std::mutex> verrou (g_verrou);
-		g_ligneMoteur = ligne;
-		g_dossierLancement = dossier;
-		if (!DemarrerProcessus (erreur)) {
-			Rapport (GS::UniString (FE ("ERREUR lancement du moteur (", "ERROR starting the engine (")) +
-					 GS::ValueToUniString (static_cast<Int32> (erreur)) + ") : " + Uni (exe));
+		std::lock_guard<std::mutex> lock (g_lock);
+		g_engineCommandLine = line;
+		g_launchFolder = folder;
+		if (!StartProcess (error)) {
+			Report (GS::UniString (FE ("ERREUR lancement du moteur (", "ERROR starting the engine (")) +
+					 GS::ValueToUniString (static_cast<Int32> (error)) + ") : " + Uni (exe));
 			return;
 		}
 	}
 	// Step 8: start the watchdog, then report the chosen translator and the state of its key.
-	g_moteurVoulu = true;
-	g_veille = std::thread (Veiller);
-	Rapport (Uni (TT::TxtF (TT::R_MOTEUR_LANCE, g_langueMessages,
-							{ { "f", NomFournisseur (g_reglages.fournisseur).ToCStr (0, MaxUSize, CC_UTF8).Get () },
-							  { "e", EtatCle (g_reglages.fournisseur).ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
+	g_engineWanted = true;
+	g_watchdog = std::thread (Watch);
+	Report (Uni (TT::TxtF (TT::R_ENGINE_STARTED, g_messageLanguage,
+							{ { "f", ProviderName (g_settings.provider).ToCStr (0, MaxUSize, CC_UTF8).Get () },
+							  { "e", KeyStatus (g_settings.provider).ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 }
 
 // Menu "Online translator > Term corrections...": opens corrections.json in Notepad, creating
 // the pre-filled template first if the file does not exist (an existing file is never
 // overwritten). ShellExecuteW returns a value <= 32 on failure.
-void OuvrirCorrections ()
+void OpenCorrections ()
 {
-	std::wstring erreur;
-	if (!TT::CreerModeleCorrections (g_racine, erreur)) {
-		Rapport (GS::UniString (FE ("ERREUR creation de corrections.json : ", "ERROR creating corrections.json: ")) + Uni (erreur));
+	std::wstring error;
+	if (!TT::CreateCorrectionsTemplate (g_root, error)) {
+		Report (GS::UniString (FE ("ERREUR creation de corrections.json : ", "ERROR creating corrections.json: ")) + Uni (error));
 		return;
 	}
-	const std::wstring parametres = L"\"" + TT::CheminCorrections (g_racine) + L"\"";
-	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parametres.c_str (), nullptr, SW_SHOWNORMAL);
+	const std::wstring parameters = L"\"" + TT::CorrectionsPath (g_root) + L"\"";
+	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parameters.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CheminCorrections (g_racine)));
+		Report (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CorrectionsPath (g_root)));
 	else
-		Rapport (T (TT::R_CORRECTIONS_OUVERT));
+		Report (T (TT::R_CORRECTIONS_OPENED));
 }
 
-// Menu "Online translator > Translator keys...": opens cles.json in Notepad, creating the empty
+// Menu "Online translator > Translator keys...": opens keys.json in Notepad, creating the empty
 // template first if the file does not exist. The keys stay on this computer: only the engine
 // reads them, at each request, so a key saved here is used by the very next translation.
-void OuvrirCles ()
+void OpenKeys ()
 {
-	std::wstring erreur;
-	if (!TT::CreerModeleCles (g_racine, erreur)) {
-		Rapport (GS::UniString (FE ("ERREUR creation de cles.json : ", "ERROR creating cles.json: ")) + Uni (erreur));
+	std::wstring error;
+	if (!TT::CreateKeysTemplate (g_root, error)) {
+		Report (GS::UniString (FE ("ERREUR creation de keys.json : ", "ERROR creating keys.json: ")) + Uni (error));
 		return;
 	}
-	const std::wstring parametres = L"\"" + TT::CheminCles (g_racine) + L"\"";
-	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parametres.c_str (), nullptr, SW_SHOWNORMAL);
+	const std::wstring parameters = L"\"" + TT::KeysPath (g_root) + L"\"";
+	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parameters.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CheminCles (g_racine)));
+		Report (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::KeysPath (g_root)));
 	else
-		Rapport (T (TT::R_CLES_OUVERT) + " (" + Uni (TT::CheminCles (g_racine)) + ")");
+		Report (T (TT::R_KEYS_OPENED) + " (" + Uni (TT::KeysPath (g_root)) + ")");
 }
 
-// Saves g_reglages to reglages.json (the layer picks it up live), reports the new settings
+// Saves g_settings to settings.json (the layer picks it up live), reports the new settings
 // in the Session Report and refreshes the menu check marks.
-void Enregistrer ()
+void Save ()
 {
-	std::wstring erreur;
+	std::wstring error;
 	// Step 1: warn when input and output languages are the same (nothing will be translated).
-	if (g_reglages.entree == g_reglages.langue && !g_reglages.langue.empty ())
-		Rapport (T (TT::R_MEME_LANGUE));
+	if (g_settings.input == g_settings.language && !g_settings.language.empty ())
+		Report (T (TT::R_SAME_LANGUAGE));
 	// Step 2: write the file atomically; on success, report languages and online translation
 	// state (translator + key state), otherwise report the error.
-	if (TT::EcrireReglages (g_racine, g_reglages, erreur)) {
-		const GS::UniString enLigne = g_reglages.moteur
-			? T (TT::R_OUI) + " (" + NomFournisseur (g_reglages.fournisseur) + " : " + EtatCle (g_reglages.fournisseur) + ")"
-			: T (TT::R_NON);
-		Rapport (Uni (TT::TxtF (TT::R_REGLAGES, g_langueMessages,
-								{ { "l", Langues ().ToCStr (0, MaxUSize, CC_UTF8).Get () },
-								  { "o", enLigne.ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
+	if (TT::WriteSettings (g_root, g_settings, error)) {
+		const GS::UniString online = g_settings.engine
+			? T (TT::R_YES) + " (" + ProviderName (g_settings.provider) + " : " + KeyStatus (g_settings.provider) + ")"
+			: T (TT::R_NO);
+		Report (Uni (TT::TxtF (TT::R_SETTINGS, g_messageLanguage,
+								{ { "l", Languages ().ToCStr (0, MaxUSize, CC_UTF8).Get () },
+								  { "o", online.ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 	} else
-		Rapport (GS::UniString (FE ("ERREUR ecriture reglages.json : ", "ERROR writing reglages.json: ")) + Uni (erreur));
+		Report (GS::UniString (FE ("ERREUR ecriture settings.json : ", "ERROR writing settings.json: ")) + Uni (error));
 	// Step 3: menu check marks follow the in-memory settings.
-	RafraichirCoches ();
+	RefreshCheckMarks ();
 }
 
 // Add-on start-up sequence (called once from Initialize). Puts everything in place so that the
 // next Python script launched by Tapir is translated.
-void Demarrer ()
+void Start ()
 {
 	// Step 1: working folder %APPDATA%\Tapir Translator; without APPDATA nothing can work.
-	g_racine = TT::DossierParDefaut ();
-	if (g_racine.empty ()) {
-		Rapport (FE ("ERREUR : variable APPDATA absente, la traduction est inactive.", "ERROR: APPDATA variable missing, translation is inactive."));
+	g_root = TT::DefaultFolder ();
+	if (g_root.empty ()) {
+		Report (FE ("ERREUR : variable APPDATA absente, la traduction est inactive.", "ERROR: APPDATA variable missing, translation is inactive."));
 		return;
 	}
 	// Step 2: write the translation layer (sitecustomize.py), the common dictionary and the
 	// user templates, and trace each file in the Session Report.
 	std::vector<std::wstring> journal;
-	const bool couche = TT::ExtraireCouche (g_racine, journal);
-	for (const std::wstring& ligne : journal)
-		Rapport (Uni (ligne));
+	// (data of versions <= 0.7.5 converted first: usually already done by RegisterInterface)
+	TT::MigrateOldData (g_root, g_migration);
+	for (const std::wstring& line : g_migration)
+		Report (Uni (line));
+	g_migration.clear ();
+	const bool layer = TT::ExtractLayer (g_root, journal);
+	for (const std::wstring& line : journal)
+		Report (Uni (line));
 
 	// Step 3: prepend the layer folder to ArchiCAD's PYTHONPATH and set TAPIR_TRANSLATOR_DIR;
 	// the scripts launched by Tapir inherit this environment.
 	std::wstring pythonPath;
-	const bool env = TT::PreparerEnvironnement (g_racine, pythonPath);
-	Rapport (GS::UniString ("PYTHONPATH = ") + Uni (pythonPath) + (env ? "" : "  (ERROR SetEnvironmentVariable)"));
+	const bool env = TT::PrepareEnvironment (g_root, pythonPath);
+	Report (GS::UniString ("PYTHONPATH = ") + Uni (pythonPath) + (env ? "" : "  (ERROR SetEnvironmentVariable)"));
 
 	// Step 4: load the saved settings and the message language they imply.
-	g_reglages = TT::LireReglages (g_racine);
-	g_langueMessages = LangueOutil (g_reglages.interface);
+	g_settings = TT::ReadSettings (g_root);
+	g_messageLanguage = ToolLanguage (g_settings.interface);
 	// Step 5: translation is active only if both the layer and the environment are in place;
 	// the engine is started only if online translation was left enabled.
-	g_pret = couche && env;
-	if (g_pret && g_reglages.moteur)
-		LancerMoteur ();
+	g_ready = layer && env;
+	if (g_ready && g_settings.engine)
+		StartEngine ();
 	// Step 6: final status line (version and languages, or "inactive").
-	Rapport (Uni (TT::TxtF (g_pret ? TT::R_DEMARRAGE : TT::R_INACTIF, g_langueMessages,
-							{ { "v", TT::VersionAddOn }, { "l", Langues ().ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
+	Report (Uni (TT::TxtF (g_ready ? TT::R_STARTUP : TT::R_INACTIVE, g_messageLanguage,
+							{ { "v", TT::AddOnVersion }, { "l", Languages ().ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 }
 
 // Menu "Options > Tapir Translator status": writes a full diagnostic to the Session Report, so
 // the user can paste it instead of describing a problem. Keys are never printed, only their state.
-void Etat ()
+void Status ()
 {
-	const GS::UniString oui = T (TT::R_OUI), non = T (TT::R_NON);
+	const GS::UniString yes = T (TT::R_YES), non = T (TT::R_NO);
 	// Step 1: title, working folder, and the two environment variables as ArchiCAD sees them.
-	Rapport (GS::UniString ("=== ") + T (TT::M_ETAT) + " " + TT::VersionAddOn + " ===");
-	Rapport (GS::UniString (FE ("dossier = ", "folder = ")) + Uni (g_racine) + (g_pret ? "" : FE ("  (couche NON installee)", "  (layer NOT installed)")));
-	Rapport (GS::UniString ("PYTHONPATH = ") + Uni (TT::LireVariable (L"PYTHONPATH")));
-	Rapport (GS::UniString ("TAPIR_TRANSLATOR_DIR = ") + Uni (TT::LireVariable (L"TAPIR_TRANSLATOR_DIR")));
+	Report (GS::UniString ("=== ") + T (TT::M_STATUS) + " " + TT::AddOnVersion + " ===");
+	Report (GS::UniString (FE ("dossier = ", "folder = ")) + Uni (g_root) + (g_ready ? "" : FE ("  (couche NON installee)", "  (layer NOT installed)")));
+	Report (GS::UniString ("PYTHONPATH = ") + Uni (TT::GetEnvVar (L"PYTHONPATH")));
+	Report (GS::UniString ("TAPIR_TRANSLATOR_DIR = ") + Uni (TT::GetEnvVar (L"TAPIR_TRANSLATOR_DIR")));
 	// Step 2: languages, collection option and tool language (with ArchiCAD's code when automatic).
-	Rapport (GS::UniString (FE ("langues = ", "languages = ")) + Langues () + ", " + T (TT::M_COLLECTE) + " = " + (g_reglages.collecte ? oui : non));
-	Rapport (T (TT::M_INTERFACE) + " = " + Uni (std::string (TT::NomInterface (g_langueMessages))) +
-			 (g_reglages.interface.empty () ? GS::UniString (" (") + T (TT::M_INTERFACE_AUTO) + " : " + Uni (g_versionArchicad) + ")" : GS::UniString ()));
+	Report (GS::UniString (FE ("langues = ", "languages = ")) + Languages () + ", " + T (TT::M_COLLECT) + " = " + (g_settings.collect ? yes : non));
+	Report (T (TT::M_INTERFACE) + " = " + Uni (std::string (TT::InterfaceName (g_messageLanguage))) +
+			 (g_settings.interface.empty () ? GS::UniString (" (") + T (TT::M_INTERFACE_AUTO) + " : " + Uni (g_archicadVersion) + ")" : GS::UniString ()));
 	// Step 3: every translator with the state of its key; "[x]" marks the selected one.
-	for (int i = 0; i < TT::NombreFournisseurs; ++i)
-		Rapport (GS::UniString ("  ") + (g_reglages.fournisseur == TT::Fournisseurs[i].code ? "[x] " : "    ") +
-				 TT::Fournisseurs[i].nom + " : " + EtatCle (TT::Fournisseurs[i].code));
+	for (int i = 0; i < TT::ProviderCount; ++i)
+		Report (GS::UniString ("  ") + (g_settings.provider == TT::Providers[i].code ? "[x] " : "    ") +
+				 TT::Providers[i].name + " : " + KeyStatus (TT::Providers[i].code));
 	// Step 4: online translation wanted or not, and whether the engine process is alive.
-	Rapport (T (TT::M_EN_LIGNE) + " = " + (g_reglages.moteur ? oui : non) + ", " + FE ("moteur ", "engine ") +
-			 (MoteurEnMarche () ? FE ("en marche", "running") : FE ("arrete", "stopped")) + " (port " +
-			 GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) + ")");
+	Report (T (TT::M_ONLINE) + " = " + (g_settings.engine ? yes : non) + ", " + FE ("moteur ", "engine ") +
+			 (EngineRunning () ? FE ("en marche", "running") : FE ("arrete", "stopped")) + " (port " +
+			 GS::ValueToUniString (static_cast<Int32> (TT::EnginePort)) + ")");
 	// Step 5: payload embedded in the .apx (hash and the first 12 file paths).
 	{
-		std::wstring empreinte;
-		std::vector<std::wstring> chemins;
-		if (TT::LireCharge (CheminApx (), empreinte, chemins)) {
-			Rapport (GS::UniString (FE ("charge embarquee dans le .apx : empreinte ", "payload embedded in the .apx: hash ")) + Uni (empreinte) + ", " +
-					 GS::ValueToUniString (static_cast<Int32> (chemins.size ())) + FE (" fichier(s)", " file(s)"));
-			for (size_t i = 0; i < chemins.size () && i < 12; ++i)
-				Rapport (GS::UniString ("  ") + Uni (chemins[i]));
+		std::wstring hash;
+		std::vector<std::wstring> paths;
+		if (TT::ReadPayload (ApxPath (), hash, paths)) {
+			Report (GS::UniString (FE ("charge embarquee dans le .apx : empreinte ", "payload embedded in the .apx: hash ")) + Uni (hash) + ", " +
+					 GS::ValueToUniString (static_cast<Int32> (paths.size ())) + FE (" fichier(s)", " file(s)"));
+			for (size_t i = 0; i < paths.size () && i < 12; ++i)
+				Report (GS::UniString ("  ") + Uni (paths[i]));
 		} else
-			Rapport (FE ("aucune charge embarquee dans le .apx", "no payload embedded in the .apx"));
+			Report (FE ("aucune charge embarquee dans le .apx", "no payload embedded in the .apx"));
 	}
 	// Step 6: candidate engine paths ("[x]" = file exists) and presence of the layer file.
-	for (const std::wstring& e : EmplacementsMoteur ())
-		Rapport (GS::UniString ("  ") + (TT::FichierExiste (e) ? "[x] " : "[ ] ") + Uni (e));
-	Rapport (GS::UniString ("sitecustomize.py = ") +
-			 (TT::FichierExiste (TT::Joindre (TT::Joindre (g_racine, L"couche"), L"sitecustomize.py")) ? oui : non));
+	for (const std::wstring& e : EngineLocations ())
+		Report (GS::UniString ("  ") + (TT::FileExists (e) ? "[x] " : "[ ] ") + Uni (e));
+	Report (GS::UniString ("sitecustomize.py = ") +
+			 (TT::FileExists (TT::Join (TT::Join (g_root, L"layer"), L"sitecustomize.py")) ? yes : non));
 
 	// Step 7: installed dictionaries.
-	const std::wstring dictionnaires = TT::Joindre (g_racine, L"dictionnaires");
-	const std::vector<std::wstring> dicos = TT::ListerJson (dictionnaires);
-	Rapport (GS::UniString (FE ("dictionnaires (", "dictionaries (")) + GS::ValueToUniString (static_cast<Int32> (dicos.size ())) + ") :");
-	for (const std::wstring& d : dicos)
-		Rapport (GS::UniString ("  ") + Uni (d));
+	const std::wstring dictionaries = TT::Join (g_root, L"dictionaries");
+	const std::vector<std::wstring> dictionaryFiles = TT::ListJson (dictionaries);
+	Report (GS::UniString (FE ("dictionnaires (", "dictionaries (")) + GS::ValueToUniString (static_cast<Int32> (dictionaryFiles.size ())) + ") :");
+	for (const std::wstring& d : dictionaryFiles)
+		Report (GS::UniString ("  ") + Uni (d));
 
 	// Step 8: collected untranslated texts: one file per script, with the number of entries
 	// that are still empty (not yet translated by the user).
-	const std::wstring manquants = TT::Joindre (g_racine, L"manquants");
-	const std::vector<std::wstring> fichiers = TT::ListerJson (manquants);
-	Rapport (GS::UniString (FE ("textes manquants (", "missing texts (")) + GS::ValueToUniString (static_cast<Int32> (fichiers.size ())) + ") :");
-	for (const std::wstring& f : fichiers) {
-		std::string contenu;
-		TT::LireFichier (TT::Joindre (manquants, f), contenu);
-		Rapport (GS::UniString ("  ") + Uni (f) + " : " + GS::ValueToUniString (static_cast<Int32> (TT::CompterVides (contenu))));
+	const std::wstring missing = TT::Join (g_root, L"missing");
+	const std::vector<std::wstring> files = TT::ListJson (missing);
+	Report (GS::UniString (FE ("textes manquants (", "missing texts (")) + GS::ValueToUniString (static_cast<Int32> (files.size ())) + ") :");
+	for (const std::wstring& f : files) {
+		std::string content;
+		TT::ReadWholeFile (TT::Join (missing, f), content);
+		Report (GS::UniString ("  ") + Uni (f) + " : " + GS::ValueToUniString (static_cast<Int32> (TT::CountEmpty (content))));
 	}
 
-	// Step 9: the last 15 non-empty lines of journal.txt (layer, engine and add-on errors).
-	const std::vector<std::string> lignes = TT::DernieresLignes (TT::Joindre (g_racine, L"journal.txt"), 15);
-	Rapport (GS::UniString ("journal.txt (") + GS::ValueToUniString (static_cast<Int32> (lignes.size ())) + ") :");
-	for (const std::string& l : lignes)
-		Rapport (GS::UniString ("  ") + Uni (l));
+	// Step 9: the last 15 non-empty lines of log.txt (layer, engine and add-on errors).
+	const std::vector<std::string> lines = TT::LastLines (TT::Join (g_root, L"log.txt"), 15);
+	Report (GS::UniString ("log.txt (") + GS::ValueToUniString (static_cast<Int32> (lines.size ())) + ") :");
+	for (const std::string& l : lines)
+		Report (GS::UniString ("  ") + Uni (l));
 }
 
 // Menu "Options > Open the dictionaries folder": opens %APPDATA%\Tapir Translator in Explorer
 // (created first if needed).
-void OuvrirDossier ()
+void OpenFolder ()
 {
-	if (g_racine.empty ())
+	if (g_root.empty ())
 		return;
-	TT::CreerDossier (g_racine);
-	const HINSTANCE r = ShellExecuteW (nullptr, L"open", g_racine.c_str (), nullptr, nullptr, SW_SHOWNORMAL);
+	TT::CreateFolder (g_root);
+	const HINSTANCE r = ShellExecuteW (nullptr, L"open", g_root.c_str (), nullptr, nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString (FE ("ERREUR ouverture du dossier ", "ERROR opening the folder ")) + Uni (g_racine));
+		Report (GS::UniString (FE ("ERREUR ouverture du dossier ", "ERROR opening the folder ")) + Uni (g_root));
 }
 
 // Handler of all five menus (installed in Initialize). Dispatches on the menu resource ID and the
@@ -751,60 +764,60 @@ GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 	ACAPI_KeepInMemory (true);
 	const short menu = menuParams->menuItemRef.menuResID;
 	const Int32 index = menuParams->menuItemRef.itemIndex;
-	// The three language menus have one item per entry of TT::Langues.
-	const bool langue = index >= 1 && index <= TT::NombreLangues;
+	// The three language menus have one item per entry of TT::Languages.
+	const bool language = index >= 1 && index <= TT::LanguageCount;
 	// Input / output language: store the code and save.
-	if (menu == kMenuEntree () && langue) {
-		g_reglages.entree = TT::Langues[index - 1].code;
-		Enregistrer ();
-	} else if (menu == kMenuSortie () && langue) {
-		g_reglages.langue = TT::Langues[index - 1].code;
-		Enregistrer ();
-	} else if (menu == kMenuTraducteur ()) {
+	if (menu == kMenuInput () && language) {
+		g_settings.input = TT::Languages[index - 1].code;
+		Save ();
+	} else if (menu == kMenuOutput () && language) {
+		g_settings.language = TT::Languages[index - 1].code;
+		Save ();
+	} else if (menu == kMenuTranslator ()) {
 		// Online translator menu: a provider, or one of the two "open file" commands.
-		if (index >= 1 && index <= TT::NombreFournisseurs) {
-			g_reglages.fournisseur = TT::Fournisseurs[index - 1].code;
+		if (index >= 1 && index <= TT::ProviderCount) {
+			g_settings.provider = TT::Providers[index - 1].code;
 			// Choosing a translator also turns online translation on (and starts the engine).
-			if (!g_reglages.moteur) {
-				g_reglages.moteur = true;
-				LancerMoteur ();
+			if (!g_settings.engine) {
+				g_settings.engine = true;
+				StartEngine ();
 			}
-			Enregistrer ();
-		} else if (index == kCles) {
-			OuvrirCles ();
+			Save ();
+		} else if (index == kKeys) {
+			OpenKeys ();
 		} else if (index == kCorrections) {
-			OuvrirCorrections ();
+			OpenCorrections ();
 		}
-	} else if (menu == kMenuInterface () && langue) {
+	} else if (menu == kMenuInterface () && language) {
 		// Tool language. Item 1 = same as ArchiCAD (empty code). Messages and the engine window
-		// change immediately; the menus only at the next ArchiCAD start (g_langueMenus is fixed).
-		g_reglages.interface = TT::Langues[index - 1].code;
-		g_langueMessages = LangueOutil (g_reglages.interface);
-		std::wstring erreur;
-		TT::EcrireReglages (g_racine, g_reglages, erreur);
-		Rapport (Uni (TT::TxtF (TT::R_INTERFACE, g_langueMessages, { { "l", TT::NomInterface (g_langueMessages) } })));
-		TraduireMenus (g_langueMessages);	// menu items follow at once (also restores the check marks)
+		// change immediately; the menus only at the next ArchiCAD start (g_menuLanguage is fixed).
+		g_settings.interface = TT::Languages[index - 1].code;
+		g_messageLanguage = ToolLanguage (g_settings.interface);
+		std::wstring error;
+		TT::WriteSettings (g_root, g_settings, error);
+		Report (Uni (TT::TxtF (TT::R_INTERFACE, g_messageLanguage, { { "l", TT::InterfaceName (g_messageLanguage) } })));
+		TranslateMenus (g_messageLanguage);	// menu items follow at once (also restores the check marks)
 		// The engine receives the language on its command line: restart it if it is running.
-		if (g_moteurVoulu) {
-			ArreterMoteur ();
-			LancerMoteur ();	// the engine picks up the new language (MyMemory quota window)
+		if (g_engineWanted) {
+			StopEngine ();
+			StartEngine ();	// the engine picks up the new language (MyMemory quota window)
 		}
-	} else if (menu == kMenuCommandes ()) {
+	} else if (menu == kMenuCommands ()) {
 		// Options menu: two toggles (saved) and two commands.
-		if (index == kAutomatique) {
-			g_reglages.moteur = !g_reglages.moteur;
-			if (g_reglages.moteur)
-				LancerMoteur ();
+		if (index == kAutomatic) {
+			g_settings.engine = !g_settings.engine;
+			if (g_settings.engine)
+				StartEngine ();
 			else
-				ArreterMoteur ();
-			Enregistrer ();
-		} else if (index == kCollecte) {
-			g_reglages.collecte = !g_reglages.collecte;
-			Enregistrer ();
-		} else if (index == kOuvrirDossier) {
-			OuvrirDossier ();
-		} else if (index == kEtat) {
-			Etat ();
+				StopEngine ();
+			Save ();
+		} else if (index == kCollect) {
+			g_settings.collect = !g_settings.collect;
+			Save ();
+		} else if (index == kOpenFolder) {
+			OpenFolder ();
+		} else if (index == kStatus) {
+			Status ();
 		}
 	}
 	return NoError;
@@ -825,9 +838,9 @@ API_AddonType CheckEnvironment (API_EnvirParams* envir)
 	// Step 1: name and description from STR# 32000 (RFIX/Tapir_TranslatorFix.grc), plus the version.
 	RSGetIndString (&envir->addOnInfo.name, 32000, 1, ACAPI_GetOwnResModule ());
 	RSGetIndString (&envir->addOnInfo.description, 32000, 2, ACAPI_GetOwnResModule ());
-	envir->addOnInfo.description += GS::UniString (" (") + TT::VersionAddOn + ")";
+	envir->addOnInfo.description += GS::UniString (" (") + TT::AddOnVersion + ")";
 	// Step 2: language code of this ArchiCAD version (FRA, GER, INT...): the default tool language.
-	g_versionArchicad = envir->serverInfo.language.ToCStr (0, MaxUSize, CC_UTF8).Get ();
+	g_archicadVersion = envir->serverInfo.language.ToCStr (0, MaxUSize, CC_UTF8).Get ();
 	// Step 3: preload, because the environment must be in place before the first Tapir script runs.
 	return APIAddon_Preload;
 }
@@ -838,27 +851,29 @@ API_AddonType CheckEnvironment (API_EnvirParams* envir)
 GSErrCode RegisterInterface (void)
 {
 	// Step 1: menu language = the saved choice, otherwise ArchiCAD's language. The settings are
-	// read directly here because Initialize (and thus Demarrer) has not run yet.
-	const std::wstring racine = TT::DossierParDefaut ();
-	const TT::Reglages r = racine.empty () ? TT::Reglages () : TT::LireReglages (racine);
-	g_langueMenus = LangueOutil (r.interface);
-	g_langueMessages = g_langueMenus;
-	// Step 2: register the five menus of that language (help strings at + DecalageAides). They all
+	// read directly here because Initialize (and thus Start) has not run yet.
+	const std::wstring root = TT::DefaultFolder ();
+	if (!root.empty ())
+		TT::MigrateOldData (root, g_migration);	// data of versions <= 0.7.5, before reading the settings
+	const TT::Settings r = root.empty () ? TT::Settings () : TT::ReadSettings (root);
+	g_menuLanguage = ToolLanguage (r.interface);
+	g_messageLanguage = g_menuLanguage;
+	// Step 2: register the five menus of that language (help strings at + HelpOffset). They all
 	// carry the same title "Tapir Translator", so ArchiCAD merges them into one main menu
 	// (MenuFlag_InsertIntoSame); a separator is put before the Options menu.
-	const auto Enregistrer = [] (short menu, GSFlags drapeaux) {
-		const GSErrCode e = ACAPI_MenuItem_RegisterMenu (menu, static_cast<short> (menu + TT::DecalageAides), MenuCode_UserDef, drapeaux);
-		g_traceMenus += " " + std::to_string (menu) + "=" + std::to_string (static_cast<long> (e));
-		if (e != NoError && g_erreurMenus == NoError) {
-			g_erreurMenus = e;
-			g_menuEnErreur = menu;
+	const auto Save = [] (short menu, GSFlags flags) {
+		const GSErrCode e = ACAPI_MenuItem_RegisterMenu (menu, static_cast<short> (menu + TT::HelpOffset), MenuCode_UserDef, flags);
+		g_menuTrace += " " + std::to_string (menu) + "=" + std::to_string (static_cast<long> (e));
+		if (e != NoError && g_menuError == NoError) {
+			g_menuError = e;
+			g_failedMenu = menu;
 		}
 	};
-	Enregistrer (kMenuEntree (), MenuFlag_InsertIntoSame);
-	Enregistrer (kMenuSortie (), MenuFlag_InsertIntoSame);
-	Enregistrer (kMenuTraducteur (), MenuFlag_InsertIntoSame);
-	Enregistrer (kMenuCommandes (), MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
-	Enregistrer (kMenuInterface (), MenuFlag_InsertIntoSame);
+	Save (kMenuInput (), MenuFlag_InsertIntoSame);
+	Save (kMenuOutput (), MenuFlag_InsertIntoSame);
+	Save (kMenuTranslator (), MenuFlag_InsertIntoSame);
+	Save (kMenuCommands (), MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
+	Save (kMenuInterface (), MenuFlag_InsertIntoSame);
 	// Step 3: never return the error: a failing menu must not make ArchiCAD unload the add-on
 	// (the translation itself would then stop too). The error is reported by Initialize.
 	return NoError;
@@ -870,24 +885,24 @@ GSErrCode Initialize (void)
 {
 	// Step 1: install the same handler on the five menus; failures are reported, not fatal.
 	GSErrCode err = NoError;
-	for (const short menu : { kMenuEntree (), kMenuSortie (), kMenuTraducteur (), kMenuCommandes (), kMenuInterface () }) {
+	for (const short menu : { kMenuInput (), kMenuOutput (), kMenuTranslator (), kMenuCommands (), kMenuInterface () }) {
 		const GSErrCode e = ACAPI_MenuItem_InstallMenuHandler (menu, MenuCommandHandler);
 		if (e != NoError) {
-			Rapport (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
+			Report (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
 					 ") = " + GS::ValueToUniString (static_cast<Int32> (e)));
 			err = e;
 		}
 	}
 	// Step 2: layer, environment, settings and (optionally) the engine.
-	Demarrer ();
-	// Step 2b: trace of the menu registration (journal.txt only): ArchiCAD language code, menu
+	Start ();
+	// Step 2b: trace of the menu registration (log.txt only): ArchiCAD language code, menu
 	// language index, and the error code returned for each menu (0 = registered).
-	Journal ("menus : ArchiCAD " + g_versionArchicad + ", langue " + TT::CodeInterface (g_langueMenus) + ", RegisterMenu" + g_traceMenus);
-	if (g_erreurMenus != NoError)
-		Rapport (GS::UniString ("ERROR ACAPI_MenuItem_RegisterMenu (") + GS::ValueToUniString (static_cast<Int32> (g_menuEnErreur)) +
-				 ") = " + GS::ValueToUniString (static_cast<Int32> (g_erreurMenus)));
+	Log ("menus : ArchiCAD " + g_archicadVersion + ", langue " + TT::InterfaceCode (g_menuLanguage) + ", RegisterMenu" + g_menuTrace);
+	if (g_menuError != NoError)
+		Report (GS::UniString ("ERROR ACAPI_MenuItem_RegisterMenu (") + GS::ValueToUniString (static_cast<Int32> (g_failedMenu)) +
+				 ") = " + GS::ValueToUniString (static_cast<Int32> (g_menuError)));
 	// Step 3: menu check marks reflect the loaded settings.
-	RafraichirCoches ();
+	RefreshCheckMarks ();
 	// Step 4: stay loaded: the environment, the engine process and its watchdog thread belong
 	// to this module and must live for the whole session.
 	ACAPI_KeepInMemory (true);
@@ -901,9 +916,9 @@ GSErrCode Initialize (void)
 // Called when the add-on is unloaded (ArchiCAD quits): stop the watchdog and the engine.
 GSErrCode FreeData (void)
 {
-	// Traced in journal.txt: an unload outside ArchiCAD's exit means the add-on lost its
+	// Traced in log.txt: an unload outside ArchiCAD's exit means the add-on lost its
 	// "keep in memory" state (the engine stops with it).
-	Journal ("add-on decharge (FreeData)");
-	ArreterMoteur ();
+	Log ("add-on decharge (FreeData)");
+	StopEngine ();
 	return NoError;
 }

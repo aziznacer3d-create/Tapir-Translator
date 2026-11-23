@@ -1,13 +1,13 @@
 // *****************************************************************************
-// Tapir Translator - engine: test translator (test bench, --essai)
+// Tapir Translator - engine: test translator (test bench, --test)
 //
-//   Translates nothing: returns "[cible] texte" (e.g. "[en] Fermer"). It lets
+//   Translates nothing: returns "[target] text" (e.g. "[en] Fermer"). It lets
 //   the test bench check the whole chain (Python layer -> server -> cache ->
 //   live redisplay) without any model or network access. A short wait mimics
 //   the computing time of a real translator.
 // *****************************************************************************
 
-#include "Traducteur.hpp"
+#include "Translator.hpp"
 
 #include <chrono>
 #include <thread>
@@ -15,21 +15,21 @@
 namespace {
 
 // Test translator: prefixes each text with the target language code.
-class TraducteurEssai : public Traducteur {
+class TestTranslator : public Translator {
 public:
 	std::string Nom () const override { return "essai (aucun modele)"; }
 
-	bool Prend (const std::string& langue) const override { return LangueArchicad (langue); }
+	bool Supports (const std::string& language) const override { return ArchicadLanguage (language); }
 
 	// Never fails; the source language is ignored.
-	bool Traduire (const std::string& /*source*/, const std::string& cible, const std::vector<std::string>& textes,
-				   std::vector<std::string>& resultats, std::string& /*erreur*/) override
+	bool Translate (const std::string& /*source*/, const std::string& target, const std::vector<std::string>& texts,
+				   std::vector<std::string>& results, std::string& /*error*/) override
 	{
 		// 200 ms per batch, like a (fast) real translation
 		std::this_thread::sleep_for (std::chrono::milliseconds (200));
-		resultats.clear ();
-		for (const std::string& t : textes)
-			resultats.push_back ("[" + cible + "] " + t);
+		results.clear ();
+		for (const std::string& t : texts)
+			results.push_back ("[" + target + "] " + t);
 		return true;
 	}
 };
@@ -37,8 +37,8 @@ public:
 }	// namespace
 
 
-// Creates the test translator (see Traducteur.hpp).
-std::unique_ptr<Traducteur> CreerTraducteurEssai ()
+// Creates the test translator (see Translator.hpp).
+std::unique_ptr<Translator> CreateTestTranslator ()
 {
-	return std::make_unique<TraducteurEssai> ();
+	return std::make_unique<TestTranslator> ();
 }

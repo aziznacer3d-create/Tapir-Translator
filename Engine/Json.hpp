@@ -1,19 +1,19 @@
 // *****************************************************************************
 // Tapir Translator - engine: minimal JSON reader / writer (header only)
 //
-//   Just what the engine needs for its HTTP protocol, cles.json and the
+//   Just what the engine needs for its HTTP protocol, keys.json and the
 //   online services' responses: objects, arrays, strings (escapes \" \\ \/
 //   \b \f \n \r \t and \uXXXX, including UTF-16 surrogate pairs), numbers,
 //   true / false / null. Strings are returned in UTF-8.
 //
-//   Json::Valeur   a parsed value (tagged union: genre + one member per kind)
-//   Json::Lecteur  recursive-descent parser (depth limited to 64)
-//   Json::Ecrire   indented writer (used to rewrite cles.json)
-//   Json::Chaine   quotes and escapes one string (used to build JSON by hand)
+//   Json::Value   a parsed value (tagged union: kind + one member per kind)
+//   Json::Reader  recursive-descent parser (depth limited to 64)
+//   Json::Write   indented writer (used to rewrite keys.json)
+//   Json::String   quotes and escapes one string (used to build JSON by hand)
 // *****************************************************************************
 
-#ifndef TT_MOTEUR_JSON_HPP
-#define TT_MOTEUR_JSON_HPP
+#ifndef TT_ENGINE_JSON_HPP
+#define TT_ENGINE_JSON_HPP
 
 #include <cstdio>
 #include <cstdlib>
@@ -23,58 +23,58 @@
 
 namespace Json {
 
-// One JSON value. Only the member matching "genre" is meaningful; a
+// One JSON value. Only the member matching "kind" is meaningful; a
 // default-constructed value is null.
-struct Valeur {
-	enum Genre { Nul, Booleen, Nombre, Chaine, Tableau, Objet };
-	Genre genre = Nul;
-	bool booleen = false;					// Booleen
-	double nombre = 0.0;					// Nombre
-	std::string chaine;						// Chaine (UTF-8)
-	std::vector<Valeur> tableau;			// Tableau
-	std::map<std::string, Valeur> objet;	// Objet (keys kept sorted; a repeated key keeps its last value)
+struct Value {
+	enum Kind { Null, Bool, Number, String, Array, Object };
+	Kind kind = Null;
+	bool boolean = false;					// Bool
+	double number = 0.0;					// Number
+	std::string str;						// String (UTF-8)
+	std::vector<Value> array;			// Array
+	std::map<std::string, Value> object;	// Object (keys kept sorted; a repeated key keeps its last value)
 
-	// Member "nom" of an object, or nullptr if this is not an object or the
+	// Member "name" of an object, or nullptr if this is not an object or the
 	// member does not exist.
-	const Valeur* Champ (const std::string& nom) const
+	const Value* Field (const std::string& name) const
 	{
-		if (genre != Objet)
+		if (kind != Object)
 			return nullptr;
-		auto it = objet.find (nom);
-		return it == objet.end () ? nullptr : &it->second;
+		auto it = object.find (name);
+		return it == object.end () ? nullptr : &it->second;
 	}
 
-	// String member "nom" of an object, or defaut if it is missing or not a
+	// String member "name" of an object, or defaultValue if it is missing or not a
 	// string.
-	std::string Texte (const std::string& nom, const std::string& defaut = std::string ()) const
+	std::string Text (const std::string& name, const std::string& defaultValue = std::string ()) const
 	{
-		const Valeur* v = Champ (nom);
-		return v != nullptr && v->genre == Chaine ? v->chaine : defaut;
+		const Value* v = Field (name);
+		return v != nullptr && v->kind == String ? v->str : defaultValue;
 	}
 };
 
 
-// Recursive-descent JSON parser. Usage: Json::Lecteur (texte).Lire (valeur).
+// Recursive-descent JSON parser. Usage: Json::Reader (text).Read (value).
 // The reader keeps a reference to the text: the text must outlive it.
-class Lecteur {
+class Reader {
 public:
-	explicit Lecteur (const std::string& texte) : s_ (texte) {}
+	explicit Reader (const std::string& text) : s_ (text) {}
 
 	// Parses the whole text into v. Returns false on a syntax error, on
 	// nesting deeper than 64 levels, or if anything but whitespace follows
 	// the value. On failure v may be partially filled.
-	bool Lire (Valeur& v)
+	bool Read (Value& v)
 	{
-		Blancs ();
+		SkipSpaces ();
 		if (!Element (v))
 			return false;
-		Blancs ();
+		SkipSpaces ();
 		return i_ == s_.size ();
 	}
 
 private:
 	// Skips JSON whitespace (space, tab, CR, LF).
-	void Blancs ()
+	void SkipSpaces ()
 	{
 		while (i_ < s_.size () && (s_[i_] == ' ' || s_[i_] == '\t' || s_[i_] == '\r' || s_[i_] == '\n'))
 			++i_;
@@ -83,64 +83,64 @@ private:
 	// Parses one value at the current position, chosen by its first character:
 	// '{' object, '[' array, '"' string, true / false / null, else a number.
 	// The depth counter protects the stack against hostile deeply nested input.
-	bool Element (Valeur& v)
+	bool Element (Value& v)
 	{
-		if (i_ >= s_.size () || ++profondeur_ > 64)
+		if (i_ >= s_.size () || ++depth_ > 64)
 			return false;
 		bool ok = false;
 		const char c = s_[i_];
 		if (c == '{')
-			ok = LireObjet (v);
+			ok = ReadObject (v);
 		else if (c == '[')
-			ok = LireTableau (v);
+			ok = ReadArray (v);
 		else if (c == '"') {
-			v.genre = Valeur::Chaine;
-			ok = LireChaine (v.chaine);
+			v.kind = Value::String;
+			ok = ReadString (v.str);
 		} else if (s_.compare (i_, 4, "true") == 0) {
-			v.genre = Valeur::Booleen;
-			v.booleen = true;
+			v.kind = Value::Bool;
+			v.boolean = true;
 			i_ += 4;
 			ok = true;
 		} else if (s_.compare (i_, 5, "false") == 0) {
-			v.genre = Valeur::Booleen;
+			v.kind = Value::Bool;
 			i_ += 5;
 			ok = true;
 		} else if (s_.compare (i_, 4, "null") == 0) {
 			i_ += 4;
 			ok = true;
 		} else
-			ok = LireNombre (v);
-		--profondeur_;
+			ok = ReadNumber (v);
+		--depth_;
 		return ok;
 	}
 
 	// Parses an object; the current character is '{'.
 	// Step 1: empty object "{}".
 	// Step 2: loop on  "key" : value  followed by ',' (next member) or '}' (end).
-	bool LireObjet (Valeur& v)
+	bool ReadObject (Value& v)
 	{
-		v.genre = Valeur::Objet;
+		v.kind = Value::Object;
 		++i_;
-		Blancs ();
+		SkipSpaces ();
 		if (i_ < s_.size () && s_[i_] == '}') {
 			++i_;
 			return true;
 		}
 		for (;;) {
-			Blancs ();
-			std::string cle;
-			if (i_ >= s_.size () || s_[i_] != '"' || !LireChaine (cle))
+			SkipSpaces ();
+			std::string key;
+			if (i_ >= s_.size () || s_[i_] != '"' || !ReadString (key))
 				return false;
-			Blancs ();
+			SkipSpaces ();
 			if (i_ >= s_.size () || s_[i_] != ':')
 				return false;
 			++i_;
-			Blancs ();
-			Valeur e;
+			SkipSpaces ();
+			Value e;
 			if (!Element (e))
 				return false;
-			v.objet[cle] = std::move (e);
-			Blancs ();
+			v.object[key] = std::move (e);
+			SkipSpaces ();
 			if (i_ < s_.size () && s_[i_] == ',') {
 				++i_;
 				continue;
@@ -156,22 +156,22 @@ private:
 	// Parses an array; the current character is '['.
 	// Step 1: empty array "[]".
 	// Step 2: loop on  value  followed by ',' (next element) or ']' (end).
-	bool LireTableau (Valeur& v)
+	bool ReadArray (Value& v)
 	{
-		v.genre = Valeur::Tableau;
+		v.kind = Value::Array;
 		++i_;
-		Blancs ();
+		SkipSpaces ();
 		if (i_ < s_.size () && s_[i_] == ']') {
 			++i_;
 			return true;
 		}
 		for (;;) {
-			Blancs ();
-			Valeur e;
+			SkipSpaces ();
+			Value e;
 			if (!Element (e))
 				return false;
-			v.tableau.push_back (std::move (e));
-			Blancs ();
+			v.array.push_back (std::move (e));
+			SkipSpaces ();
 			if (i_ < s_.size () && s_[i_] == ',') {
 				++i_;
 				continue;
@@ -187,15 +187,15 @@ private:
 	// Parses a number: takes the longest run of the characters "+-0123456789.eE"
 	// and converts it with atof (lenient: the exact JSON number grammar is not
 	// checked). Fails if there is no such character (unknown token).
-	bool LireNombre (Valeur& v)
+	bool ReadNumber (Value& v)
 	{
-		const size_t debut = i_;
+		const size_t start = i_;
 		while (i_ < s_.size () && (std::string ("+-0123456789.eE").find (s_[i_]) != std::string::npos))
 			++i_;
-		if (i_ == debut)
+		if (i_ == start)
 			return false;
-		v.genre = Valeur::Nombre;
-		v.nombre = std::atof (s_.substr (debut, i_ - debut).c_str ());
+		v.kind = Value::Number;
+		v.number = std::atof (s_.substr (start, i_ - start).c_str ());
 		return true;
 	}
 
@@ -245,7 +245,7 @@ private:
 	// Ordinary bytes are copied as they are (the text is UTF-8 already);
 	// escapes are decoded. Returns false on an unknown escape or a missing
 	// closing quote.
-	bool LireChaine (std::string& out)
+	bool ReadString (std::string& out)
 	{
 		++i_;	// skip the opening quote
 		out.clear ();
@@ -277,10 +277,10 @@ private:
 						return false;
 					if (cp >= 0xD800 && cp <= 0xDBFF && i_ + 6 <= s_.size () && s_[i_] == '\\' && s_[i_ + 1] == 'u') {
 						i_ += 2;
-						unsigned long bas = 0;
-						if (!Hex4 (bas))
+						unsigned long low = 0;
+						if (!Hex4 (low))
 							return false;
-						cp = 0x10000 + ((cp - 0xD800) << 10) + (bas - 0xDC00);
+						cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
 					}
 					Utf8 (cp, out);
 					break;
@@ -294,80 +294,80 @@ private:
 
 	const std::string& s_;		// text being parsed (not copied)
 	size_t i_ = 0;				// current position in s_
-	int profondeur_ = 0;		// current nesting depth
+	int depth_ = 0;		// current nesting depth
 };
 
 
-// Forward declaration: Ecrire uses Chaine, defined below.
-inline std::string Chaine (const std::string& texte);
+// Forward declaration: Write uses String, defined below.
+inline std::string String (const std::string& text);
 
-// Appends v to sortie as indented JSON (2 spaces per level).
-//   retrait : indentation of the current level (0 at the top)
+// Appends v to output as indented JSON (2 spaces per level).
+//   indent : indentation of the current level (0 at the top)
 // The keys of an object are written in alphabetical order (std::map order),
 // except that keys starting with "_" (explanations meant for the user) come
 // first. Numbers use "%.15g". Empty arrays / objects are written "[]" / "{}".
-inline void Ecrire (const Valeur& v, std::string& sortie, int retrait = 0)
+inline void Write (const Value& v, std::string& output, int indent = 0)
 {
-	const std::string marge (static_cast<size_t> (retrait + 2), ' ');
-	const std::string fin (static_cast<size_t> (retrait), ' ');
-	switch (v.genre) {
-		case Valeur::Nul:		sortie += "null"; break;
-		case Valeur::Booleen:	sortie += v.booleen ? "true" : "false"; break;
-		case Valeur::Nombre: {
+	const std::string margin (static_cast<size_t> (indent + 2), ' ');
+	const std::string end_ (static_cast<size_t> (indent), ' ');
+	switch (v.kind) {
+		case Value::Null:		output += "null"; break;
+		case Value::Bool:	output += v.boolean ? "true" : "false"; break;
+		case Value::Number: {
 			char t[32];
-			std::snprintf (t, sizeof (t), "%.15g", v.nombre);
-			sortie += t;
+			std::snprintf (t, sizeof (t), "%.15g", v.number);
+			output += t;
 			break;
 		}
-		case Valeur::Chaine:	sortie += Chaine (v.chaine); break;
-		case Valeur::Tableau: {
-			if (v.tableau.empty ()) {
-				sortie += "[]";
+		case Value::String:	output += String (v.str); break;
+		case Value::Array: {
+			if (v.array.empty ()) {
+				output += "[]";
 				break;
 			}
-			sortie += "[\n";
-			for (size_t i = 0; i < v.tableau.size (); ++i) {
-				sortie += marge;
-				Ecrire (v.tableau[i], sortie, retrait + 2);
-				sortie += i + 1 < v.tableau.size () ? ",\n" : "\n";
+			output += "[\n";
+			for (size_t i = 0; i < v.array.size (); ++i) {
+				output += margin;
+				Write (v.array[i], output, indent + 2);
+				output += i + 1 < v.array.size () ? ",\n" : "\n";
 			}
-			sortie += fin + "]";
+			output += end_ + "]";
 			break;
 		}
-		case Valeur::Objet: {
-			if (v.objet.empty ()) {
-				sortie += "{}";
+		case Value::Object: {
+			if (v.object.empty ()) {
+				output += "{}";
 				break;
 			}
 			// Order of the members: "_..." keys first, then the others
-			std::vector<const std::pair<const std::string, Valeur>*> champs;
-			for (const auto& c : v.objet) {
+			std::vector<const std::pair<const std::string, Value>*> fields;
+			for (const auto& c : v.object) {
 				if (!c.first.empty () && c.first[0] == '_')
-					champs.push_back (&c);
+					fields.push_back (&c);
 			}
-			for (const auto& c : v.objet) {
+			for (const auto& c : v.object) {
 				if (c.first.empty () || c.first[0] != '_')
-					champs.push_back (&c);
+					fields.push_back (&c);
 			}
-			sortie += "{\n";
-			for (size_t i = 0; i < champs.size (); ++i) {
-				sortie += marge + Chaine (champs[i]->first) + ": ";
-				Ecrire (champs[i]->second, sortie, retrait + 2);
-				sortie += i + 1 < champs.size () ? ",\n" : "\n";
+			output += "{\n";
+			for (size_t i = 0; i < fields.size (); ++i) {
+				output += margin + String (fields[i]->first) + ": ";
+				Write (fields[i]->second, output, indent + 2);
+				output += i + 1 < fields.size () ? ",\n" : "\n";
 			}
-			sortie += fin + "}";
+			output += end_ + "}";
 			break;
 		}
 	}
 }
 
-// Returns texte as a quoted JSON string literal: quote, backslash, LF, CR and
+// Returns text as a quoted JSON string literal: quote, backslash, LF, CR and
 // tab get their short escape, other control characters below 0x20 become
 // \u00XX; every other byte (including UTF-8 sequences) is copied unchanged.
-inline std::string Chaine (const std::string& texte)
+inline std::string String (const std::string& text)
 {
 	std::string r = "\"";
-	for (const char c : texte) {
+	for (const char c : text) {
 		switch (c) {
 			case '"':  r += "\\\""; break;
 			case '\\': r += "\\\\"; break;
@@ -376,9 +376,9 @@ inline std::string Chaine (const std::string& texte)
 			case '\t': r += "\\t";  break;
 			default:
 				if (static_cast<unsigned char> (c) < 0x20) {
-					char tampon[8];
-					std::snprintf (tampon, sizeof (tampon), "\\u%04x", static_cast<unsigned> (static_cast<unsigned char> (c)));
-					r += tampon;
+					char buffer[8];
+					std::snprintf (buffer, sizeof (buffer), "\\u%04x", static_cast<unsigned> (static_cast<unsigned char> (c)));
+					r += buffer;
 				} else
 					r += c;
 		}

@@ -1,8 +1,8 @@
 {
-  "_explication": "Dictionnaire commun de Tapir Translator (domaine public, voir LICENSE). Une notion par ligne, une colonne par langue : chaque texte d'une langue se traduit dans la langue choisie, quelle que soit la langue du script. REMPLACE A CHAQUE VERSION DE L'ADD-ON : mettez vos ajouts dans _perso.json. Un dictionnaire <script>.json l'emporte sur celui-ci. {n}, {nom}... = parties variables. Traductions a faire relire par des locuteurs natifs, en particulier hu.",
+  "_explanation": "Dictionnaire commun de Tapir Translator (domaine public, voir LICENSE). Une notion par ligne, une colonne par langue : chaque texte d'une langue se traduit dans la langue choisie, quelle que soit la langue du script. REMPLACE A CHAQUE VERSION DE L'ADD-ON : mettez vos ajouts dans _user.json. Un dictionnaire <script>.json l'emporte sur celui-ci. {n}, {nom}... = parties variables. Traductions a faire relire par des locuteurs natifs, en particulier hu.",
   "format": 2,
-  "langues": ["en", "fr", "de", "es", "pt", "it", "hu"],
-  "termes": [
+  "languages": ["en", "fr", "de", "es", "pt", "it", "hu"],
+  "terms": [
     {"_g": "interface : boutons"},
     {"en": "OK", "fr": "OK", "de": "OK", "es": "Aceptar", "pt": "OK", "it": "OK", "hu": "OK"},
     {"en": "Cancel", "fr": "Annuler", "de": "Abbrechen", "es": "Cancelar", "pt": "Cancelar", "it": "Annulla", "hu": "Mégse"},
