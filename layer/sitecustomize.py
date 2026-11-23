@@ -70,7 +70,7 @@ Every internal error is written to log.txt and never reaches the script.
 import os
 import sys
 
-LAYER_VERSION = "0.10.0"
+LAYER_VERSION = "0.10.1"
 _PERIOD_MS = 300            # Period (ms) of the live check: settings / dictionaries reload, arrived translations
 _LOG_SIZE = 512 * 1024  # Beyond this size (bytes) the log file is deleted and starts again from zero
 
@@ -543,12 +543,13 @@ class _Engine:
         return patterns
 
     # --- translation ------------------------------------------------------------------
-    def translate(self, text):
+    def translate(self, text, low=False):
         """Translate one displayed text into the current output language.
 
-        Input: any value (only non-blank str are translated). Output: the text to
-        display; the original text itself when no translation is requested, when the
-        text is unknown, or while an online translation is pending.
+        Input: any value (only non-blank str are translated); low = True for texts of
+        secondary importance (detail rows of a Treeview), sent online after the others.
+        Output: the text to display; the original text itself when no translation is
+        requested, when the text is unknown, or while an online translation is pending.
         Order: result cache -> dictionaries (_translate) -> text already valid in the
         output language -> online translation (self.auto) -> original text.
         """
@@ -571,7 +572,19 @@ class _Engine:
             # Step 5: sentence outside the dictionaries: online translation through the local
             # engine (if enabled). While pending, the original text stays displayed and is not
             # cached: it will be translated again when the answer arrives.
-            r, pending_ = self.auto.translate(text)
+            # A decorated text ("✔  Elements...", "Name:") is sent without its decoration,
+            # which is put back around the translation, unless it was already translated as
+            # a whole (cache of older versions).
+            core, before, after = self._split(text)
+            r = self.auto.lookup(text) if (before or after) and core else None
+            if r is not None:
+                pending_ = False
+            elif (before or after) and core:
+                r, pending_ = self.auto.translate(core, low)
+                if r is not None:
+                    r = self._attach(before, r, after)
+            else:
+                r, pending_ = self.auto.translate(text, low)
             if pending_:
                 return text
             if r is None:
@@ -603,20 +616,7 @@ class _Engine:
             if t is None:
                 t = self._case(core)
             if t is not None:
-                # Adapt the punctuation spacing to the output language.
-                if self.language == "fr":
-                    # French typography: a space before : ? ! ;
-                    if after[:1] in (":", "?", "!", ";"):
-                        after = " " + after
-                else:
-                    # Other languages: no-break spaces become normal spaces and the space
-                    # before : ? ! ; is removed.
-                    after = after.replace(" ", " ")
-                    for p in (" :", " ?", " !", " ;"):
-                        if after.startswith(p):
-                            after = after[1:]
-                            break
-                return before + t + after
+                return self._attach(before, t, after)
         # Step 3: whole text as a {placeholder} template.
         t = self._pattern(text)
         if t is not None:
@@ -644,6 +644,23 @@ class _Engine:
                 return "\n".join(res)
         return None
 
+    def _attach(self, before, t, after):
+        """Put the decoration split off by _split back around the translation 't'.
+
+        The punctuation spacing follows the output language: French gets a space
+        before : ? ! ; and the other languages lose it (no-break spaces become normal).
+        """
+        if self.language == "fr":
+            if after[:1] in (":", "?", "!", ";"):
+                after = " " + after
+        else:
+            after = after.replace(" ", " ")
+            for p in (" :", " ?", " !", " ;"):
+                if after.startswith(p):
+                    after = after[1:]
+                    break
+        return before + t + after
+
     @staticmethod
     def _split(text):
         """Split a text into (core, leading part, trailing part).
@@ -654,9 +671,15 @@ class _Engine:
         "  Name :" -> ("Name", "  ", " :"). Used to look up the bare core in the
         dictionaries and put the decoration back around its translation.
         """
-        # Step 1: strip the leading and trailing whitespace.
+        # Step 1: strip the leading and trailing whitespace, and the leading symbols that
+        # only decorate the text ("✔  Elements...", "⚠ Zones...", "• item"); opening
+        # brackets and quotes stay with the text.
         start = len(text) - len(text.lstrip())
+        while start < len(text) and not text[start].isalnum() and text[start] not in "([{\"'«“‘¿¡<$€£#@":
+            start += 1
         end_ = len(text.rstrip())
+        if start > end_:
+            start = end_
         core = text[start:end_]
         before = text[:start]
         after = text[end_:]
@@ -783,6 +806,10 @@ class _Automatic(object):
         self.event = threading.Event()   # Set when texts wait in self.pending
         self.memory = {}         # (translator, source, target) -> {text: translation, "" = failure}
         self.pending = []         # [(translator, source, target, text)] waiting to be sent
+        self.pending_low = []     # Same, sent after self.pending (Treeview detail rows)
+        # (translator, source, target) -> {text with its numbers replaced by "#": (example
+        # text, example translation)}: "16 found" is derived from a cached "24 found"
+        self.number_patterns = {}
         self.requests = set()     # Requests already in the queue or in progress
         self.modifies = set()     # (translator, source, target) caches to save to disk
         self.new = False      # New translations have arrived (display to recompute)
@@ -856,8 +883,87 @@ class _Automatic(object):
         d = _Engine._read_json(self._path(*key))
         trans = d.get("translations") if isinstance(d, dict) else None
         self.memory[key] = dict(trans) if isinstance(trans, dict) else {}
+        for t, r in self.memory[key].items():
+            self._learn_numbers(key, t, r)
 
-    def translate(self, text):
+    # --- texts with numbers: "16 found" derived from "24 found" ----------------------------
+    _NUMBER = r"\d+(?:[.,]\d+)*"
+
+    def _learn_numbers(self, key, text, translation):
+        """Remember a translated text containing numbers as an example for its pattern.
+
+        Only examples whose numbers all appear, in the same order, in the translation
+        are kept, and never with the numbers 0 or 1 (their singular would be copied to
+        the plural). Must be called with self.lock held (or before the worker starts).
+        """
+        import re
+        if not translation or not any(c.isdigit() for c in text):
+            return
+        numbers = re.findall(self._NUMBER, text)
+        if not numbers or any(n in ("0", "1") for n in numbers):
+            return
+        pos = 0
+        for n in numbers:
+            pos = translation.find(n, pos)
+            if pos < 0:
+                return
+            pos += len(n)
+        pattern = re.sub(self._NUMBER, "#", text)
+        self.number_patterns.setdefault(key, {})[pattern] = (text, translation)
+
+    def _derive(self, key, text):
+        """Translation of 'text' derived from a cached example with the same pattern.
+
+        "16 found" + example ("24 found" -> "24 résultats trouvés") gives
+        "16 résultats trouvés". None when there is no usable example (or when 'text'
+        contains 0 or 1). Must be called with self.lock held.
+        """
+        import re
+        if not any(c.isdigit() for c in text):
+            return None
+        numbers = re.findall(self._NUMBER, text)
+        if any(n in ("0", "1") for n in numbers):
+            return None
+        example = self.number_patterns.get(key, {}).get(re.sub(self._NUMBER, "#", text))
+        if example is None:
+            return None
+        source_numbers = re.findall(self._NUMBER, example[0])
+        if len(source_numbers) != len(numbers):
+            return None
+        # Replace the example's numbers, in order, by the text's numbers.
+        out, pos = "", 0
+        translation = example[1]
+        for old, new in zip(source_numbers, numbers):
+            i = translation.find(old, pos)
+            if i < 0:
+                return None
+            out += translation[pos:i] + new
+            pos = i + len(old)
+        return out + translation[pos:]
+
+    def _key(self):
+        """(translator, source, target) of the current settings, or None when online
+        translation cannot be used now (disabled, language unknown, same language)."""
+        source = self.source or self.engine.detected_language()
+        if not self.active_ or not source or source == self.target:
+            return None
+        return (self.provider, source, self.target)
+
+    def lookup(self, text):
+        """Cached online translation of 'text' (corrections applied), or None.
+
+        Never queues anything: used for a decorated text that older versions sent and
+        cached as a whole ("Name:"), before its bare core is requested.
+        """
+        key = self._key()
+        if key is None or not self.translatable(text):
+            return None
+        with self.lock:
+            self._load(key)
+            t = self.memory[key].get(text)
+        return self.engine.apply_corrections(text, t) if t else None
+
+    def translate(self, text, low=False):
         """Look up or request the online translation of one text (Tk thread).
 
         Output: (translation or None, pending_). pending_ = True means the text
@@ -891,15 +997,20 @@ class _Automatic(object):
                 # Term corrections are applied at display time: a newly added correction
                 # also applies to the translations already in the cache
                 return (self.engine.apply_corrections(text, t) if t else None), False
+            # Step 3b: same text with other numbers already translated ("24 found").
+            d = self._derive(key, text)
+            if d is not None:
+                return self.engine.apply_corrections(text, d), False
             # Step 4: during an outage, do not queue; remember to retry when it ends.
             if time.time() < self.outage_until:
                 self.outage_failures = True
                 return None, False
-            # Step 5: queue the request once and wake the worker thread.
+            # Step 5: queue the request once and wake the worker thread; secondary texts
+            # (low) wait behind the others.
             queued = (self.provider, source, self.target, text)
             if queued not in self.requests:
                 self.requests.add(queued)
-                self.pending.append(queued)
+                (self.pending_low if low else self.pending).append(queued)
                 self.event.set()
         return None, True
 
@@ -945,9 +1056,13 @@ class _Automatic(object):
             self.event.wait()
             time.sleep(0.05)   # Let the other texts of the same window arrive
             with self.lock:
+                # Main texts first, then the secondary ones (Treeview detail rows).
                 lot = self.pending[:self.LOT]
                 del self.pending[:self.LOT]
-                if not self.pending:
+                rest = self.LOT - len(lot)
+                lot += self.pending_low[:rest]
+                del self.pending_low[:rest]
+                if not self.pending and not self.pending_low:
                     self.event.clear()
             # Step 2: group the texts by (translator, source, target): one request per group.
             groups = {}
@@ -1008,6 +1123,7 @@ class _Automatic(object):
                     m = self.memory[key]
                     for t, r in zip(texts, results):
                         m[t] = r
+                        self._learn_numbers(key, t, r)
                         self.requests.discard((provider, source, target, t))
                     self.modifies.add(key)
                     self.new = True
@@ -1120,10 +1236,10 @@ class _Proxy(object):
                 _log("after call: %r" % e)
         return res
 
-    def _tr(self, value):
+    def _tr(self, value, low=False):
         """Translate 'value' if it is a str, otherwise return it unchanged."""
         if isinstance(value, str):
-            return _engine.translate(value)
+            return _engine.translate(value, low)
         return value
 
     def _note(self, key, original, displayed):
@@ -1279,7 +1395,7 @@ class _Proxy(object):
             self._classes[path] = c
         return c
 
-    def _tr_list(self, value):
+    def _tr_list(self, value, low=False):
         """Translate every element of a Tcl list given as a string or a tuple.
 
         Output: (originals, displayed), two tuples of str of the same length. The
@@ -1288,7 +1404,7 @@ class _Proxy(object):
         if value is None or value == "":
             return (), ()
         originals = tuple(str(v) for v in self._real.splitlist(value))
-        return originals, tuple(self._tr(v) for v in originals)
+        return originals, tuple(self._tr(v, low) for v in originals)
 
     def _as_tuple(self, value):
         """A Tcl list result (tuple, string or Tcl object) as a tuple of str."""
@@ -1327,14 +1443,17 @@ class _Proxy(object):
         """
         if sub == "insert" and n >= 4:
             text = values = None
+            # Rows under another row are details (element labels, layers...): they are
+            # sent online after the main texts.
+            low = str(argv[2]) != ""
             i = 4
             while i + 1 < n:
                 if argv[i] == "-text" and isinstance(argv[i + 1], str):
                     original = argv[i + 1]
-                    argv[i + 1] = self._tr(original)
+                    argv[i + 1] = self._tr(original, low)
                     text = (original, argv[i + 1])
                 elif argv[i] == "-values":
-                    values = self._tr_list(argv[i + 1])
+                    values = self._tr_list(argv[i + 1], low)
                     argv[i + 1] = values[1]
                 i += 2
             if text is None and values is None:

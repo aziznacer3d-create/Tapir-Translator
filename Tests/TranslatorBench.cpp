@@ -972,6 +972,8 @@ int main ()
 		Text (o, "entry", "Walls", "Walls");				// user input: never translated
 		// "/" between words: not a path; no engine running, so it stays as is here.
 		Text (o, "slash", "Check / Element ID", "Check / Element ID");
+		// Leading symbol: the words are looked up without it, the symbol stays in front.
+		Text (o, "marked", "\xE2\x9C\x94  Fermer", "\xE2\x9C\x94  Close");
 		// The script's own comparisons with its original texts still succeed.
 		Text (o, "logic", "ok");
 
@@ -1227,6 +1229,10 @@ int main ()
 			Check ("\"Check / Element ID\" sent to the engine (not taken for a path)",
 				   o.WaitFor (Shows ("slash", "[fr] Check / Element ID"), 5000));
 			Text (o, "slash", "[fr] Check / Element ID", "Check / Element ID");
+			// A text with a leading symbol is sent without it: it reuses the translation of
+			// "Unknown text" and the symbol is put back in front.
+			Check ("\"\xE2\x9A\xA0  Unknown text\": the words are translated, the symbol stays",
+				   o.WaitFor (Shows ("marked_unknown", "\xE2\x9A\xA0  [fr] Unknown text"), 5000));
 			Text (o, "logic", "ok");
 
 			// Step 3: the cache file of the "test" provider, English -> French, must hold the

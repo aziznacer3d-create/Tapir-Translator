@@ -136,6 +136,11 @@ entry.pack()
 # A label with a "/" between words: a separator, not a path (it may be sent online).
 lbl_slash = tk.Label(root, text="Check / Element ID")
 lbl_slash.pack()
+# Texts decorated with a leading symbol: only the words are translated, the symbol stays.
+lbl_marked = tk.Label(root, text="✔  Close")
+lbl_marked.pack()
+lbl_marked_unknown = tk.Label(root, text="⚠  Unknown text")
+lbl_marked_unknown.pack()
 
 
 # Returns the real Tcl interpreter. When the layer is active, root.tk is its proxy and the
@@ -173,6 +178,8 @@ def state():
               " ".join(listbox.get(0, "end"))))
     e.append(("entry", entry.get(), entry.get()))
     e.append(("slash", r.call(str(lbl_slash), "cget", "-text"), lbl_slash.cget("text")))
+    e.append(("marked", r.call(str(lbl_marked), "cget", "-text"), lbl_marked.cget("text")))
+    e.append(("marked_unknown", r.call(str(lbl_marked_unknown), "cget", "-text"), lbl_marked_unknown.cget("text")))
     # The script logic compares original texts: it must keep working while translated
     # ("ok" when the comparisons still succeed, "BROKEN" otherwise).
     e.append(("logic", "ok" if btn_close.cget("text") == t("Close") and status.get() in (t("Ready"), t("Done")) else "BROKEN", ""))

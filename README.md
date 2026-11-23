@@ -310,6 +310,7 @@ the conversion of old data. `uv` must be in the `PATH`.
 - v0.7.1 – v0.7.5: menu fixes (resource IDs below 32767, menu resources linked into the `.apx`, add-on
   kept loaded after a menu command, menus renamed at once when the tool language changes); Session
   Report lines copied to the log.
+- v0.10.1: leading symbols ("✔  ") kept apart from the translated words; texts with numbers derived from a cached example ("16 found" from "24 found"); Treeview detail rows sent online after the main texts.
 - v0.10.0: Treeview rows, Listbox items and Combobox lists translated too; "/" between words no longer taken for a path.
 - v0.9.0: term corrections window (rules editor, suggestions from the cache, preview) instead of Notepad.
 - v0.8.0: the whole code base in English (identifiers, files, folders, messages, data names), with an
