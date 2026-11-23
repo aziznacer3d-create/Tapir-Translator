@@ -1,0 +1,50 @@
+﻿/* *****************************************************************************
+// Ressources non localisées de l'add-on "Tapir Translator"
+//
+//   Traduit en direct l'interface (tkinter) des scripts Python lancés par la
+//   palette Tapir, sans modifier les scripts : voir README.md.
+//   Les index du menu sont repris dans Src/TT_Menu.hpp : les garder alignés.
+// ****************************************************************************/
+
+
+'MDID' 32500 "Add-On Identifier" {
+	623201637		// Developer ID
+	1856068953		// Local ID (Tapir Translator)
+}
+
+
+'STR#' 32000 "Add-on Name and Description" {
+/* [  1] */		"Tapir Translator"
+/* [  2] */		"Traduit en direct l'interface des scripts Python lancés par Tapir, sans modifier les scripts"
+}
+
+
+'STR#' 32500 "Strings for the Menu" {
+/* [   ] */		"Tapir Translator"
+/* [  1] */			"Langue d'origine (aucune traduction)"
+/* [  2] */			"Français"
+/* [  3] */			"English"
+/* [  4] */			"Deutsch"
+/* [  5] */			"Español"
+/* [  6] */			"Italiano"
+/* [  7] */			"-"
+/* [  8] */			"Collecter les textes non traduits"
+/* [  9] */			"-"
+/* [ 10] */			"Ouvrir le dossier des dictionnaires"
+/* [ 11] */			"État de Tapir Translator (Rapport de session)"
+}
+
+'STR#' 32600 "Prompt Strings for the Menu" {
+/* [   ] */		""
+/* [  1] */		"Affiche les scripts Tapir dans leur langue, sans traduction."
+/* [  2] */		"Traduit l'interface des scripts Tapir en français (en direct, y compris les fenêtres déjà ouvertes)."
+/* [  3] */		"Traduit l'interface des scripts Tapir en anglais (en direct, y compris les fenêtres déjà ouvertes)."
+/* [  4] */		"Traduit l'interface des scripts Tapir en allemand (en direct, y compris les fenêtres déjà ouvertes)."
+/* [  5] */		"Traduit l'interface des scripts Tapir en espagnol (en direct, y compris les fenêtres déjà ouvertes)."
+/* [  6] */		"Traduit l'interface des scripts Tapir en italien (en direct, y compris les fenêtres déjà ouvertes)."
+/* [  7] */		""
+/* [  8] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
+/* [  9] */		""
+/* [ 10] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
+/* [ 11] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langue, dictionnaires, fin du journal de la couche."
+}

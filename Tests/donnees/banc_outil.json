@@ -1,0 +1,18 @@
+{
+  "langue_source": "fr",
+  "traductions": {
+    "en": {
+      "Outil de démonstration": "Demo tool",
+      "Première ligne": "First line",
+      "Deuxième ligne": "Second line",
+      "{n} murs créés": "{n} walls created",
+      "Général": "General",
+      "Avancé": "Advanced",
+      "Plan": "Floor plan"
+    },
+    "de": {
+      "Outil de démonstration": "Demo-Werkzeug",
+      "{n} murs créés": "{n} Wände erstellt"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# Build outputs
+build/
+build_ac30/
+out/
+*.obj
+*.ilk
+*.pdb
+*.exp
+*.lib
+*.apx
+!bin/*.apx
+*.log
+
+# Visual Studio / CMake
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# OS
+Thumbs.db
+Desktop.ini
+
+__pycache__/
