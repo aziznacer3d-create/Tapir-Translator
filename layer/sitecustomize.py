@@ -64,6 +64,11 @@ How it works, step by step
    open window re-applies its texts (_Proxy.reapply), so the language
    changes without restarting the tool.
 
+9. Script UI pages. Tapir's ShowScriptUI command shows an HTML page written by the
+   script in an ArchiCAD palette. The layer patches http.client / urllib3, rewrites the
+   request that carries the page and puts a translation script at its head; a local
+   server of the script's process answers the page (see "Script UI pages" below).
+
 Every internal error is written to log.txt and never reaches the script.
 """
 
@@ -169,7 +174,11 @@ class _Engine:
         self.votes = {}           # Language -> number of script texts recognised in that language
         self.seen_set = set()          # Texts already counted in the votes (each text votes once)
         self.detected = ""        # Automatically detected script language, frozen once found
+        self.quiet = False        # True while looking up page script strings: nothing recorded as missing
         self.auto = _Automatic(root, self)   # Online translation through the local engine
+        import threading
+        # Tk thread and Script UI page server threads share the engine (see _poll_changes).
+        self.lock = threading.RLock()
 
     # --- files ------------------------------------------------------------------------
     def _tool_name(self):
@@ -242,8 +251,13 @@ class _Engine:
 
         Output: True if the language or a translation may have changed (the caller
         must then re-apply the texts of the open windows), False if nothing changed.
-        Called once at start-up and then every _PERIOD_MS by the Tk timer.
+        Called once at start-up and then every _PERIOD_MS (see _poll_changes).
         """
+        with self.lock:
+            return self._reload_if_changed()
+
+    def _reload_if_changed(self):
+        """Body of reload_if_changed (self.lock held)."""
         # Step 1: compare the file fingerprint with the last one; unchanged -> nothing to do.
         hash_ = self._compute_hash()
         if hash_ == self.hash:
@@ -543,7 +557,7 @@ class _Engine:
         return patterns
 
     # --- translation ------------------------------------------------------------------
-    def translate(self, text):
+    def translate(self, text, request=True):
         """Translate one displayed text into the current output language.
 
         Input: any value (only non-blank str are translated). Output: the text to
@@ -551,7 +565,38 @@ class _Engine:
         text is unknown, or while an online translation is pending.
         Order: result cache -> dictionaries (_translate) -> text already valid in the
         output language -> online translation (self.auto) -> original text.
+        request=False: dictionaries and online translations already received only. No
+        online request, no language vote, nothing recorded as missing and an unknown
+        text is not cached. Used for the strings of a Script UI page's JavaScript, which
+        may be identifiers or CSS classes rather than displayed texts.
+        Thread-safe (self.lock): Script UI pages are translated from other threads.
         """
+        with self.lock:
+            if request:
+                return self._translate_text(text)
+            self.quiet = True
+            try:
+                return self._lookup_text(text)
+            finally:
+                self.quiet = False
+
+    def _lookup_text(self, text):
+        """translate(text, request=False) (self.lock held, self.quiet set)."""
+        if not self.language or not isinstance(text, str) or not text.strip():
+            return text
+        r = self.cache.get(text)
+        if r is not None:
+            return r
+        r = self._translate(text, True)
+        if r is None:
+            r = self.auto.cached(text)
+        if r is None:
+            return text
+        self.cache[text] = r
+        return r
+
+    def _translate_text(self, text):
+        """translate(text) with an online request when needed (self.lock held)."""
         # Step 1: no output language, not a string, or blank -> unchanged.
         if not self.language or not isinstance(text, str) or not text.strip():
             return text
@@ -700,7 +745,7 @@ class _Engine:
         Texts without any letter or longer than 2000 characters are ignored. The texts
         are kept in memory and written later by write_missing().
         """
-        if not self.collect or not self.language:
+        if not self.collect or not self.language or self.quiet:
             return
         if not any(c.isalpha() for c in text) or len(text) > 2000:
             return
@@ -717,6 +762,11 @@ class _Engine:
         as a dictionary. Existing entries are kept (merge). Called by the Tk timer, when
         a window is destroyed and at process exit; does nothing if nothing new.
         """
+        with self.lock:
+            self._write_missing()
+
+    def _write_missing(self):
+        """Body of write_missing (self.lock held)."""
         if not self.missing_changed:
             return
         import json
@@ -903,6 +953,23 @@ class _Automatic(object):
                 self.event.set()
         return None, True
 
+    def cached(self, text):
+        """Online translation of 'text' already received (cache), without any request.
+
+        Output: the corrected translation, or None (disabled, not translatable, same
+        language, unknown or known failure). Used for the strings of Script UI pages.
+        """
+        if not self.active_ or not self.translatable(text):
+            return None
+        source = self.source or self.engine.detected_language()
+        if source == self.target:
+            return None
+        key = (self.provider, source, self.target)
+        with self.lock:
+            self._load(key)
+            t = self.memory[key].get(text)
+        return self.engine.apply_corrections(text, t) if t else None
+
     def to_reapply(self):
         """Called by the Tk loop: True if the display must be recomputed.
 
@@ -1049,6 +1116,27 @@ class _Automatic(object):
 
 _engine = None          # The single _Engine of this process (created by _install)
 _proxies = []   # One _Proxy per open Tk root window
+_revision = 0       # Increased each time the displayed texts must be recomputed (_poll_changes)
+_tk_revision = 0    # Last revision applied to the Tk windows
+
+
+def _poll_changes():
+    """Reload the files if they changed and take the online translations that arrived.
+
+    Output: the current revision number; it is increased when the displayed texts must
+    be recomputed (language, dictionaries, corrections changed, or online translations
+    arrived). Called by the Tk timer and by the Script UI page server: each one compares
+    the revision with the last one it applied, so neither misses a change seen by the other.
+    """
+    global _revision
+    with _engine.lock:
+        change = _engine.reload_if_changed()
+        if _engine.auto.to_reapply():
+            _engine.cache = {}   # Online translations have arrived: forget the cached originals
+            change = True
+        if change:
+            _revision += 1
+        return _revision
 
 
 # =====================================================================================
@@ -1846,6 +1934,686 @@ class _Proxy(object):
 
 
 # =====================================================================================
+#  Script UI pages (HTML palettes shown by Tapir's ShowScriptUI command)
+# =====================================================================================
+#
+# The script writes its page itself and sends it to ArchiCAD in an HTTP request whose
+# JSON body is {"command": "API.ExecuteAddOnCommand", "parameters": {"addOnCommandId":
+# {"commandName": "ShowScriptUI", ...}, "addOnCommandParameters": {"htmlContent": ...,
+# "title": ...}}}. That request leaves from THIS process, so the layer patches
+# http.client (urllib, the archicad package) and urllib3 (requests) and rewrites it:
+#   1. the texts of the page are looked up at once: the HTML texts and attributes
+#      (online translation requested if needed) and the strings of its JavaScript
+#      (dictionaries and cache only: they may be identifiers or CSS classes);
+#   2. a script (_PAGE_SCRIPT) is put at the head of the page with the translations
+#      found. In the palette it translates every displayed text, including the texts the
+#      page's own JavaScript writes later (MutationObserver), and gives the originals
+#      back to the page's code (textContent, innerText, getAttribute, title, value...), so
+#      the page's logic and the result it submits never see the translation;
+#   3. a small HTTP server of this process (_PageServer, 127.0.0.1, random port and key)
+#      answers the page for the texts that were not known in advance and tells it when
+#      the language, the dictionaries or online translations change: the open palette
+#      follows the Tapir Translator menu like the tkinter windows do.
+# If the script has ended (the server is gone), the page keeps the translations it got.
+
+_PAGE_ATTRIBUTES = ("title", "placeholder", "alt", "aria-label")   # Displayed attributes
+_PAGE_MARK = "__tapirTranslator"   # Name of the page script's object; a page holding it is not rewritten again
+
+_PAGE_SCRIPT = r"""
+(function () {
+"use strict";
+if (window.__tapirTranslator) { return; }
+try {
+var C = __CONFIG__;
+var map = Object.create(null);
+Object.keys(C.map || {}).forEach(function (k) { map[k] = C.map[k]; });
+var ATTRS = ["title", "placeholder", "alt", "aria-label"];
+var BUTTONS = {button: true, submit: true, reset: true};
+var RAW = "script,style,textarea,noscript";
+var OFF = "[translate='no'],.notranslate,[contenteditable=''],[contenteditable='true'],[contenteditable='plaintext-only']";
+var LETTER;
+try { LETTER = new RegExp("\\p{L}", "u"); } catch (e) { LETTER = /[A-Za-z\u00C0-\u024F\u0370-\u052F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/; }
+var SPLIT = /^(\s*)([\s\S]*?)(\s*)$/;
+var dData = Object.getOwnPropertyDescriptor(CharacterData.prototype, "data");
+var getAttr = Element.prototype.getAttribute;
+var setAttr = Element.prototype.setAttribute;
+var hasAttr = Element.prototype.hasAttribute;
+var texts = new WeakMap();   // Text node -> {o: original, s: shown}
+var attrs = new WeakMap();   // Element -> {attribute: {o: original, s: shown}}
+var seen = Object.create(null);
+var seenList = [];           // Every displayed text (trimmed), asked to the layer
+var fresh = false;           // Texts seen since the last request to the layer
+var anyTranslated = false;   // Read-back of originals is only needed once something is translated
+var busy = false, failures = 0, rev = C.rev, timer = 0;
+
+window.__tapirTranslator = {
+  refresh: function () { walk(document); },
+  state: function () { return {lang: C.lang, rev: rev, seen: seenList.length, failures: failures, server: !!C.url}; }
+};
+
+function lookup(core) {
+  if (!core || core.length > 4000 || !LETTER.test(core)) { return null; }
+  if (!seen[core]) { seen[core] = true; seenList.push(core); fresh = true; }
+  var t = map[core];
+  return typeof t === "string" ? t : null;
+}
+function shownOf(original) {
+  var m = SPLIT.exec(original);
+  var t = lookup(m[2]);
+  return t === null ? original : m[1] + t + m[3];
+}
+function textOff(el) { return el.closest(RAW + "," + OFF) !== null; }
+function attrOff(el) { return el.closest(OFF) !== null || (el.parentElement !== null && el.parentElement.closest(RAW) !== null); }
+
+function doText(node, checked) {
+  var p = node.parentNode;
+  if (!p || p.nodeType !== 1 || (!checked && textOff(p))) { return; }
+  var cur = dData.get.call(node);
+  var st = texts.get(node);
+  var original = st && cur === st.s ? st.o : cur;   // Otherwise the page changed the text: new original
+  var shown = shownOf(original);
+  if (shown !== original) {
+    anyTranslated = true;
+    // <option> without value: select.value is its text, keep it in the original language
+    if (p.tagName === "OPTION" && !hasAttr.call(p, "value")) { setAttr.call(p, "value", original.replace(/[ \t\n\f\r]+/g, " ").replace(/^ | $/g, "")); }
+  }
+  if (st || shown !== original) { texts.set(node, {o: original, s: shown}); }
+  if (cur !== shown) { dData.set.call(node, shown); }
+}
+function doAttr(el, name) {
+  if (name === "value" && !(el.tagName === "INPUT" && BUTTONS[String(getAttr.call(el, "type") || "").toLowerCase()])) { return; }
+  if (!hasAttr.call(el, name)) { return; }
+  var cur = getAttr.call(el, name);
+  var all = attrs.get(el);
+  var st = all ? all[name] : undefined;
+  var original = st && cur === st.s ? st.o : cur;
+  var shown = shownOf(original);
+  if (shown !== original) { anyTranslated = true; }
+  if (st || shown !== original) {
+    if (!all) { all = Object.create(null); attrs.set(el, all); }
+    all[name] = {o: original, s: shown};
+  }
+  if (cur !== shown) { setAttr.call(el, name, shown); }
+}
+function doAttrs(el) {
+  for (var i = 0; i < ATTRS.length; i++) { doAttr(el, ATTRS[i]); }
+  if (el.tagName === "INPUT") { doAttr(el, "value"); }
+}
+var FILTER = {acceptNode: function (n) {
+  if (n.nodeType === 1 && n.matches(RAW + "," + OFF)) {
+    if (n.tagName === "TEXTAREA" && !n.matches(OFF)) { doAttrs(n); }   // its placeholder, not its text
+    return NodeFilter.FILTER_REJECT;
+  }
+  return NodeFilter.FILTER_ACCEPT;
+}};
+function walk(root) {
+  if (!root) { return; }
+  if (root.nodeType === 3) { doText(root, false); return; }
+  if (root.nodeType === 1) {
+    if (textOff(root)) { if (root.tagName === "TEXTAREA" && !attrOff(root)) { doAttrs(root); } return; }
+    doAttrs(root);
+  } else if (root.nodeType !== 9 && root.nodeType !== 11) { return; }
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, FILTER);
+  for (var n = w.nextNode(); n; n = w.nextNode()) {
+    if (n.nodeType === 3) { doText(n, true); } else { doAttrs(n); }
+  }
+}
+
+// --- the page's code reads back the ORIGINAL texts ---
+function originalText(node) {
+  var st = texts.get(node);
+  var cur = dData.get.call(node);
+  return st && cur === st.s ? st.o : cur;
+}
+function originalAttr(el, name, value) {
+  var all = attrs.get(el);
+  var a = all ? all[String(name).toLowerCase()] : undefined;
+  return a && value === a.s ? a.o : value;
+}
+function joinTexts(root) {
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  var s = "";
+  for (var n = w.nextNode(); n; n = w.nextNode()) { s += originalText(n); }
+  return s;
+}
+function collapse(s) { return s.replace(/[ \t\n\f\r]+/g, " ").replace(/^ | $/g, ""); }
+function withOriginals(root, read) {
+  // innerText / innerHTML need the layout or the serialiser: the originals are put back for the time of the read
+  var undo = [];
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (var n = root; n; n = w.nextNode()) {
+    if (n.nodeType === 3) {
+      var st = texts.get(n);
+      if (st && st.o !== st.s && dData.get.call(n) === st.s) { dData.set.call(n, st.o); undo.push([n, st.s]); }
+    } else if (n.nodeType === 1) {
+      var all = attrs.get(n);
+      if (all) {
+        for (var k in all) {
+          var a = all[k];
+          if (a.o !== a.s && getAttr.call(n, k) === a.s) { setAttr.call(n, k, a.o); undo.push([n, a.s, k]); }
+        }
+      }
+    }
+  }
+  try { return read(); } finally {
+    for (var i = undo.length - 1; i >= 0; i--) {
+      var u = undo[i];
+      if (u.length === 3) { setAttr.call(u[0], u[2], u[1]); } else { dData.set.call(u[0], u[1]); }
+    }
+  }
+}
+function getter(proto, name, make) {
+  var d = proto ? Object.getOwnPropertyDescriptor(proto, name) : null;
+  if (!d || !d.get || !d.configurable) { return; }
+  var g = d.get, replacement = make(g);
+  Object.defineProperty(proto, name, {configurable: true, enumerable: d.enumerable, set: d.set,
+    get: function () { try { return anyTranslated ? replacement.call(this) : g.call(this); } catch (e) { return g.call(this); } }});
+}
+function attrGetter(proto, prop, attr) {
+  getter(proto, prop, function (g) { return function () { return originalAttr(this, attr, g.call(this)); }; });
+}
+function serialised(g) { return function () { var self = this; return withOriginals(this, function () { return g.call(self); }); }; }
+getter(CharacterData.prototype, "data", function (g) { return function () { return this.nodeType === 3 ? originalText(this) : g.call(this); }; });
+getter(Node.prototype, "nodeValue", function (g) { return function () { return this.nodeType === 3 ? originalText(this) : g.call(this); }; });
+getter(Node.prototype, "textContent", function (g) { return function () {
+  if (this.nodeType === 3) { return originalText(this); }
+  return this.nodeType === 1 || this.nodeType === 11 ? joinTexts(this) : g.call(this); }; });
+getter(HTMLElement.prototype, "innerText", serialised);
+getter(Element.prototype, "innerHTML", serialised);
+getter(Element.prototype, "outerHTML", serialised);
+getter(HTMLOptionElement.prototype, "text", function (g) { return function () { return collapse(joinTexts(this)); }; });
+getter(HTMLOptionElement.prototype, "label", function (g) { return function () { return hasAttr.call(this, "label") ? g.call(this) : this.text; }; });
+getter(Document.prototype, "title", function (g) { return function () {
+  var t = this.querySelector ? this.querySelector("title") : null;
+  return t ? collapse(joinTexts(t)) : g.call(this); }; });
+attrGetter(HTMLElement.prototype, "title", "title");
+attrGetter(HTMLInputElement.prototype, "placeholder", "placeholder");
+attrGetter(HTMLTextAreaElement.prototype, "placeholder", "placeholder");
+attrGetter(HTMLImageElement.prototype, "alt", "alt");
+attrGetter(Element.prototype, "ariaLabel", "aria-label");
+attrGetter(HTMLInputElement.prototype, "value", "value");   // Buttons: the value is the displayed attribute
+Element.prototype.getAttribute = function (name) {
+  var v = getAttr.apply(this, arguments);
+  try { return originalAttr(this, name, v); } catch (e) { return v; }
+};
+["alert", "confirm", "prompt"].forEach(function (name) {
+  var f = window[name];
+  if (typeof f !== "function") { return; }
+  window[name] = function (message) {
+    var a = Array.prototype.slice.call(arguments);
+    if (typeof message === "string") { a[0] = shownOf(message); later(); }
+    return f.apply(window, a);
+  };
+});
+
+// --- the layer (server of the script's process): unknown texts, language and dictionary changes ---
+function receive(r, list) {
+  if (!r || typeof r !== "object" || !r.map) { return; }
+  var next = r.map, changed = false;
+  if (r.lang !== C.lang) { changed = true; C.lang = r.lang; map = Object.create(null); }
+  for (var i = 0; i < list.length; i++) {
+    var k = list[i];
+    var v = Object.prototype.hasOwnProperty.call(next, k) ? next[k] : undefined;
+    if (map[k] !== v) { changed = true; if (v === undefined) { delete map[k]; } else { map[k] = v; } }
+  }
+  if (typeof r.rev === "number") { rev = r.rev; }
+  if (changed) { walk(document); }
+}
+function later() { if (fresh && !timer && C.url && failures < 5) { timer = setTimeout(send, 40); } }
+function send() {
+  timer = 0;
+  if (busy || !C.url || failures >= 5) { return; }
+  busy = true; fresh = false;
+  var list = seenList.slice();
+  var x = new XMLHttpRequest();
+  x.open("POST", C.url + "/tr?k=" + C.key, true);
+  x.setRequestHeader("Content-Type", "text/plain;charset=UTF-8");
+  x.timeout = 15000;
+  x.onload = function () {
+    busy = false;
+    if (x.status === 200) { failures = 0; try { receive(JSON.parse(x.responseText), list); } catch (e) {} } else { failures++; }
+    later();
+  };
+  x.onerror = x.ontimeout = function () { busy = false; failures++; fresh = true; later(); };
+  x.send(JSON.stringify({texts: list}));
+}
+function poll() {
+  if (busy || !C.url || failures >= 5) { return; }
+  var x = new XMLHttpRequest();
+  x.open("GET", C.url + "/rev?k=" + C.key, true);
+  x.timeout = 5000;
+  x.onload = function () {
+    if (x.status !== 200) { failures++; return; }
+    failures = 0;
+    try { var r = JSON.parse(x.responseText); if (r.rev !== rev || r.lang !== C.lang) { fresh = true; send(); } } catch (e) {}
+  };
+  x.onerror = x.ontimeout = function () { failures++; };
+  x.send();
+}
+
+var observer = new MutationObserver(function (records) {
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    if (r.type === "childList") {
+      for (var j = 0; j < r.addedNodes.length; j++) { if (r.addedNodes[j].isConnected) { walk(r.addedNodes[j]); } }
+    } else if (r.type === "characterData") {
+      if (r.target.nodeType === 3 && r.target.isConnected) { doText(r.target, false); }
+    } else if (r.type === "attributes" && r.target.isConnected && !attrOff(r.target)) {
+      doAttr(r.target, r.attributeName);
+    }
+  }
+  later();
+});
+observer.observe(document, {subtree: true, childList: true, characterData: true, attributes: true,
+                            attributeFilter: ATTRS.concat(["value"])});
+walk(document);
+document.addEventListener("DOMContentLoaded", function () { walk(document); later(); });
+if (C.url) {
+  var pollTimer = setInterval(function () { if (failures >= 5) { clearInterval(pollTimer); } else { poll(); } }, 700);
+}
+later();
+} catch (e) {
+  try { console.error("Tapir Translator: " + e); } catch (e2) {}
+}
+})();
+"""
+
+
+def _js_unescape(raw):
+    """Decode the escapes of a JavaScript string literal body (\\n, \\', \\u00e9, \\u{1F600}...)."""
+    import re
+    simple = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+
+    def one(m):
+        s = m.group(1)
+        if s in simple:
+            return simple[s]
+        if s in ("\n", "\r\n", "\r"):
+            return ""   # Line continuation
+        try:
+            if s.startswith("u{"):
+                return chr(int(s[2:-1], 16))
+            if s[0] in "ux" and len(s) > 1:
+                return chr(int(s[1:], 16))
+        except ValueError:
+            pass
+        return s
+    return re.sub(r"\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r\n|[\s\S])", one, raw)
+
+
+def _js_strings(source):
+    """Return the string literals of a JavaScript (or JSON) source.
+
+    Comments are skipped; '...' and "..." strings are decoded; a `...` template is
+    kept only without ${...} parts (a filled template is only known once displayed, the
+    page asks for it then). A quote inside a regular expression literal may cut a
+    string short: harmless, these strings are only looked up in the dictionaries.
+    """
+    out = []
+    i, n = 0, len(source)
+    while i < n:
+        c = source[i]
+        if c == "/" and source.startswith("//", i):
+            j = source.find("\n", i)
+            i = n if j < 0 else j
+        elif c == "/" and source.startswith("/*", i):
+            j = source.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        elif c in "'\"":
+            j = i + 1
+            while j < n and source[j] != c and source[j] != "\n":
+                j += 2 if source[j] == "\\" else 1
+            out.append(_js_unescape(source[i + 1:j]))
+            i = j + 1
+        elif c == "`":
+            j, depth, filled = i + 1, 0, False
+            while j < n:
+                d = source[j]
+                if d == "\\":
+                    j += 2
+                    continue
+                if depth == 0 and d == "`":
+                    break
+                if depth == 0 and source.startswith("${", j):
+                    depth, filled = 1, True
+                    j += 2
+                    continue
+                if depth > 0:
+                    depth += 1 if d == "{" else -1 if d == "}" else 0
+                j += 1
+            if not filled:
+                out.append(_js_unescape(source[i + 1:j]))
+            i = j + 1
+        else:
+            i += 1
+    return out
+
+
+def _page_texts(page):
+    """Return (displayed, literals): the texts of an HTML page to look up in advance.
+
+    displayed = texts between tags and displayed attributes (title, placeholder, alt,
+    aria-label, value of input buttons), outside <script> and <style>;
+    literals = string literals of the page's scripts, plus the texts of the HTML
+    fragments among them (markup the page's code puts in innerHTML).
+    Each list is stripped, without duplicates, texts with at least one letter.
+    """
+    from html.parser import HTMLParser
+    displayed, literals = [], []
+
+    class Parser(HTMLParser):
+        def __init__(self, sink):
+            HTMLParser.__init__(self, convert_charrefs=True)
+            self.sink = sink     # List receiving the texts outside scripts
+            self.raw = None      # "script" / "style" while inside one
+            self.code = []
+
+        def handle_starttag(self, tag, attrs):
+            values = dict((k, v) for k, v in attrs if v)
+            for name in _PAGE_ATTRIBUTES:
+                if name in values:
+                    self.sink.append(values[name])
+            if tag == "input" and values.get("type", "").lower() in ("button", "submit", "reset") \
+                    and "value" in values:
+                self.sink.append(values["value"])
+            if tag in ("script", "style"):
+                self.raw, self.code = tag, []
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag(tag, attrs)
+            if tag in ("script", "style"):
+                self.raw = None
+
+        def handle_endtag(self, tag):
+            if self.raw and tag == self.raw:
+                if tag == "script":
+                    for s in _js_strings("".join(self.code)):
+                        literals.append(s)
+                        if "<" in s and ">" in s:
+                            sub = Parser(literals)
+                            sub.feed(s)
+                            sub.close()
+                self.raw = None
+
+        def handle_data(self, data):
+            if self.raw:
+                self.code.append(data)
+            else:
+                self.sink.append(data)
+
+    parser = Parser(displayed)
+    parser.feed(page)
+    parser.close()
+
+    def clean(items):
+        result, known = [], set()
+        for t in items:
+            t = t.strip()
+            if t and len(t) <= 2000 and t not in known and any(c.isalpha() for c in t):
+                known.add(t)
+                result.append(t)
+        return result
+    return clean(displayed), clean(literals)
+
+
+def _page_insert(page, script):
+    """Put 'script' at the head of the page: after <head>, else <html>, else <!doctype>."""
+    import re
+    for pattern in (r"<head\b[^>]*>", r"<html\b[^>]*>", r"<!doctype\b[^>]*>"):
+        m = re.search(pattern, page, re.I)
+        if m:
+            return page[:m.end()] + script + page[m.end():]
+    return script + page
+
+
+class _PageServer(object):
+    """HTTP server of the script's process that answers its Script UI pages.
+
+    127.0.0.1 only, random port, random key in every URL (other local pages cannot use
+    it). CORS headers (the palette's page has its own origin) and the Private Network
+    Access header. Routes:
+      GET  /rev?k=<key>  -> {"rev": n, "lang": "fr"}: the page asks again when they change;
+      POST /tr?k=<key>   {"texts": [...]} -> {"rev", "lang", "map": {original: translation}}
+                         (only the texts whose translation differs); unknown texts go to
+                         the online translator like the tkinter ones.
+    The threads are daemons: the server never keeps the script alive.
+    """
+
+    MAX_BODY = 4 * 1024 * 1024
+    MAX_TEXTS = 5000
+
+    def __init__(self):
+        import http.server
+        import json
+        import secrets
+        import threading
+        from urllib.parse import parse_qs, urlsplit
+        self.key = secrets.token_hex(16)
+        key, max_body, max_texts = self.key, self.MAX_BODY, self.MAX_TEXTS
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass    # The default writes every request to stderr, i.e. the script's output
+
+            def _headers(self, code, length):
+                self.send_response(code)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(length))
+                self.end_headers()
+
+            def _answer(self, code, value):
+                body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+                self._headers(code, len(body))
+                self.wfile.write(body)
+
+            def _route(self):
+                parts = urlsplit(self.path)
+                return parts.path, parse_qs(parts.query).get("k", [""])[0] == key
+
+            def do_OPTIONS(self):
+                self._headers(204, 0)
+
+            def do_GET(self):
+                try:
+                    path, allowed = self._route()
+                    if not allowed:
+                        return self._answer(403, {"error": "key"})
+                    if path != "/rev":
+                        return self._answer(404, {"error": "path"})
+                    self._answer(200, {"rev": _poll_changes(), "lang": _engine.language})
+                except Exception as e:
+                    _log("Script UI server (GET): %r" % e)
+
+            def do_POST(self):
+                try:
+                    path, allowed = self._route()
+                    if not allowed:
+                        return self._answer(403, {"error": "key"})
+                    if path != "/tr":
+                        return self._answer(404, {"error": "path"})
+                    length = int(self.headers.get("Content-Length") or 0)
+                    if length <= 0 or length > max_body:
+                        return self._answer(413, {"error": "size"})
+                    data = json.loads(self.rfile.read(length).decode("utf-8"))
+                    texts = data.get("texts") if isinstance(data, dict) else None
+                    if not isinstance(texts, list):
+                        return self._answer(400, {"error": "texts"})
+                    revision = _poll_changes()
+                    found = {}
+                    for t in texts[:max_texts]:
+                        if isinstance(t, str):
+                            r = _engine.translate(t)
+                            if isinstance(r, str) and r != t:
+                                found[t] = r
+                    self._answer(200, {"rev": revision, "lang": _engine.language, "map": found})
+                    _engine.write_missing()
+                except Exception as e:
+                    _log("Script UI server (POST): %r" % e)
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, name="TapirTranslatorPages", daemon=True).start()
+
+
+_pages = None            # The _PageServer of this process (started with the first Script UI page)
+_pages_failed = False    # The server could not start: pages get only the translations known in advance
+
+
+def _page_server():
+    """Return the _PageServer of this process, started on first use; None if it cannot start."""
+    global _pages, _pages_failed
+    if _pages is None and not _pages_failed:
+        try:
+            _pages = _PageServer()
+            import atexit
+            atexit.register(_pages_flush)
+            _log("Script UI page server on 127.0.0.1:%d" % _pages.port)
+        except Exception as e:
+            _pages_failed = True
+            _log("Script UI page server not started: %r" % e)
+    return _pages
+
+
+def _pages_flush():
+    """At exit: let the online translations asked for the pages arrive (at most 3 s).
+
+    A script may show its page and end at once; waiting a little puts the translations
+    in the cache, so the page is translated the next time it is shown.
+    """
+    try:
+        import time
+        auto = _engine.auto
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            with auto.lock:
+                busy = auto.active_ and bool(auto.requests) and time.time() >= auto.outage_until
+            if not busy:
+                break
+            time.sleep(0.1)
+        _engine.write_missing()
+    except Exception:
+        pass
+
+
+def _page_translate(page):
+    """Return the page with the translation script at its head (see the section comment)."""
+    import json
+    if _PAGE_MARK in page:
+        return page
+    _poll_changes()
+    displayed, literals = _page_texts(page)
+    found = {}
+    for t in displayed:
+        r = _engine.translate(t)
+        if isinstance(r, str) and r != t:
+            found[t] = r
+    for t in literals:
+        if t not in found:
+            r = _engine.translate(t, request=False)
+            if isinstance(r, str) and r != t:
+                found[t] = r
+    server = _page_server()
+    config = {"map": found, "lang": _engine.language, "rev": _revision,
+              "url": "http://127.0.0.1:%d" % server.port if server else "",
+              "key": server.key if server else ""}
+    # The configuration is JavaScript inside <script>: "</" and "<!--" must not appear as such.
+    data = json.dumps(config).replace("</", "<\\/").replace("<!--", "<\\!--")
+    _log("Script UI page (tool=%s, language=%s): %d displayed texts, %d script strings, %d translated in advance"
+         % (_engine._tool_name(), _engine.language or "original", len(displayed), len(literals), len(found)))
+    return _page_insert(page, "<script>" + _PAGE_SCRIPT.replace("__CONFIG__", data) + "</script>")
+
+
+def _page_parameters(data):
+    """Return the parameters dict of a ShowScriptUI command in a request body, or None."""
+    if not isinstance(data, dict) or data.get("command") != "API.ExecuteAddOnCommand":
+        return None
+    p = data.get("parameters")
+    if not isinstance(p, dict):
+        return None
+    command = p.get("addOnCommandId")
+    params = p.get("addOnCommandParameters")
+    if isinstance(command, dict) and command.get("commandName") == "ShowScriptUI" and isinstance(params, dict):
+        return params
+    return None
+
+
+def _page_body(body):
+    """Return the rewritten body of a ShowScriptUI request, or None to send it unchanged."""
+    if isinstance(body, str):
+        raw = body.encode("utf-8")
+    elif isinstance(body, (bytes, bytearray)):
+        raw = bytes(body)
+    else:
+        return None   # File or iterator: never a Tapir command
+    if b"ShowScriptUI" not in raw or b"htmlContent" not in raw:
+        return None
+    import json
+    data = json.loads(raw.decode("utf-8"))
+    params = _page_parameters(data)
+    if params is None or not isinstance(params.get("htmlContent"), str):
+        return None
+    params["htmlContent"] = _page_translate(params["htmlContent"])
+    if isinstance(params.get("title"), str):
+        params["title"] = _engine.translate(params["title"])   # Palette title
+    new = json.dumps(data).encode("ascii")    # ASCII: \u escapes, any encoding of the body works
+    return new.decode("ascii") if isinstance(body, str) else new
+
+
+def _page_request(args, kwargs):
+    """Rewrite the arguments (after method and url) of HTTPConnection.request.
+
+    Output: (args, kwargs), unchanged unless the body is a ShowScriptUI command; the
+    Content-Length header, when given, follows the new body.
+    """
+    body = args[0] if args else kwargs.get("body")
+    new = _page_body(body)
+    if new is None:
+        return args, kwargs
+    if args:
+        args = (new,) + tuple(args[1:])
+    else:
+        kwargs = dict(kwargs, body=new)
+    headers = args[1] if len(args) > 1 else kwargs.get("headers")
+    if headers and hasattr(headers, "items"):
+        fixed = dict((k, str(len(new)) if str(k).lower() == "content-length" else v) for k, v in headers.items())
+        if len(args) > 1:
+            args = (args[0], fixed) + tuple(args[2:])
+        else:
+            kwargs["headers"] = fixed
+    return args, kwargs
+
+
+def _hook_http(module):
+    """Patch module.HTTPConnection.request (http.client, urllib3.connection).
+
+    Every request goes through _page_request; only ShowScriptUI commands are changed.
+    urllib3 1.x inherits the request of http.client (already patched: nothing to do).
+    """
+    cls = getattr(module, "HTTPConnection", None)
+    original = getattr(cls, "request", None) if cls is not None else None
+    if original is None or getattr(original, "_tapir_translator", False):
+        return
+    import functools
+
+    @functools.wraps(original)
+    def request(self, method, url, *args, **kwargs):
+        try:
+            args, kwargs = _page_request(args, kwargs)
+        except Exception as e:
+            _log("Script UI page not translated: %r" % e)
+        return original(self, method, url, *args, **kwargs)
+
+    request._tapir_translator = True
+    cls.request = request
+
+
+# =====================================================================================
 #  Hooking into tkinter
 # =====================================================================================
 
@@ -1859,15 +2627,15 @@ def _watch(root):
     """
     def tic():
         """One timer tick (see _watch); errors are logged, the timer goes on."""
+        global _tk_revision
         try:
-            # Step 1: settings / dictionaries / corrections changed?
-            change = _engine.reload_if_changed()
-            # Step 2: online translations arrived (or an outage / detection wait ended)?
-            if _engine.auto.to_reapply():
-                _engine.cache = {}   # Online translations have arrived: forget the cached originals
-                change = True
+            # Steps 1-2: settings / dictionaries / corrections changed, or online translations
+            # arrived (or an outage / detection wait ended)? The Script UI page server may have
+            # noticed it first: the revision number tells.
+            revision = _poll_changes()
             # Step 3: re-translate every open window.
-            if change:
+            if revision != _tk_revision:
+                _tk_revision = revision
                 for inter in list(_proxies):
                     inter.reapply()
             # Step 4: save the missing texts collected so far (no-op if nothing new).
@@ -1934,15 +2702,16 @@ def _hook_up(tkinter):
 
 
 class _Loader(object):
-    """Import loader wrapper used for the tkinter module.
+    """Import loader wrapper used for the hooked modules (see _HOOKS).
 
     It delegates to the real loader, and once the module has been executed it calls
-    _hook_up() on it, so tkinter is patched before the script can use it.
+    its hook on it, so the module is patched before the script can use it.
     """
 
-    def __init__(self, loader):
-        """Wrap the real loader 'loader' found by the standard PathFinder."""
+    def __init__(self, loader, hook):
+        """Wrap the real loader 'loader' found by the standard PathFinder; hook(module) patches."""
         self._loader = loader
+        self._hook = hook
 
     def create_module(self, spec):
         """Delegate module creation to the real loader."""
@@ -1952,9 +2721,9 @@ class _Loader(object):
         """Execute the module with the real loader, then patch it (errors are logged)."""
         self._loader.exec_module(module)
         try:
-            _hook_up(module)
+            self._hook(module)
         except Exception as e:
-            _log("branchement : %r" % e)
+            _log("hook of %s: %r" % (getattr(module, "__name__", "?"), e))
 
     def __getattr__(self, name):
         """Forward every other loader attribute to the real loader."""
@@ -1962,48 +2731,54 @@ class _Loader(object):
 
 
 class _Hook(object):
-    """Meta-path finder that waits for the import of tkinter to patch it.
+    """Meta-path finder that waits for the import of the hooked modules to patch them.
 
     Nothing is imported in advance: start-up stays light and scripts without a
     window are not affected.
     """
 
     def find_spec(self, name, path=None, target=None):
-        """Return the tkinter spec with a wrapping loader; None for any other module.
+        """Return the spec of a module of _HOOKS with a wrapping loader; None otherwise.
 
         The spec is found with the standard PathFinder, then its loader is replaced
         by a _Loader. Returning None lets the normal import machinery proceed.
         """
-        if name != "tkinter":
+        hook = _HOOKS.get(name)
+        if hook is None:
             return None
         try:
             from importlib.machinery import PathFinder
             spec = PathFinder.find_spec(name, path)
             if spec is None or spec.loader is None:
                 return None
-            spec.loader = _Loader(spec.loader)
+            spec.loader = _Loader(spec.loader, hook)
             return spec
         except Exception as e:
             _log("crochet : %r" % e)
             return None
 
 
+# Modules patched when they are imported: tkinter (windows), http.client and urllib3
+# (requests that carry a Script UI page, see _hook_http).
+_HOOKS = {"tkinter": _hook_up, "http.client": _hook_http, "urllib3.connection": _hook_http}
+
+
 def _install():
-    """Create the engine, load the files and hook tkinter.
+    """Create the engine, load the files and hook tkinter and the HTTP clients.
 
     Step 1: create the global _engine and load settings / dictionaries.
-    Step 2: if tkinter is already imported, patch it now; otherwise install the
-    import hook at the head of sys.meta_path.
+    Step 2: patch now the hooked modules already imported; install the import hook at
+    the head of sys.meta_path for the others.
     Step 3: write the missing texts at process exit.
     """
     global _engine
     root = _folder()
     _engine = _Engine(root)
     _engine.reload_if_changed()
-    if "tkinter" in sys.modules:
-        _hook_up(sys.modules["tkinter"])
-    else:
-        sys.meta_path.insert(0, _Hook())
+    for name, hook in _HOOKS.items():
+        if name in sys.modules:
+            hook(sys.modules[name])
+    sys.meta_path.insert(0, _Hook())
     import atexit
     atexit.register(lambda: _engine.write_missing())
 
