@@ -64,6 +64,11 @@ bool KnownProvider (const std::string& code);
 // TCP port of the local translation engine (127.0.0.1).
 constexpr int EnginePort = 8779;
 
+// True if a server accepts TCP connections on 127.0.0.1:<port> within timeoutMs. Used by the
+// add-on's watchdog: when another ArchiCAD instance already runs an engine on EnginePort, that
+// engine is used instead of restarting ours in a loop.
+bool PortAnswers (int port, int timeoutMs);
+
 // keys.json: credentials of the online translators. KeysPath returns <root>\keys.json;
 // CreateKeysTemplate writes an empty template if the file does not exist (never overwritten).
 std::wstring KeysPath (const std::wstring& root);

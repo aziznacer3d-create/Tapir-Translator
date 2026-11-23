@@ -438,8 +438,8 @@ bool StartProcess (DWORD& error)
 // Watchdog thread body: restarts the engine whenever it stops (crash, killed process...)
 // for as long as g_engineWanted is true. Runs outside the main thread, so it only logs to
 // log.txt (Log), never to the Session Report.
-// Exit code 2 means the port is already taken by the engine of another ArchiCAD instance:
-// in that case the restart is retried much later (30 s).
+// Exit code 2 means the port is already taken: if an engine answers there (another ArchiCAD
+// instance), it is used (Step 3b); otherwise the restart is retried 30 s later.
 void Watch ()
 {
 	int restarts = 0;							// restarts in the current one-hour window
@@ -461,6 +461,27 @@ void Watch ()
 		DWORD code = 0;
 		if (h != nullptr)
 			GetExitCodeProcess (h, &code);
+		// Step 3b: code 2 = the port is taken. When an engine answers there (the engine of another
+		// ArchiCAD instance: same port, same keys file), that engine serves the scripts of this
+		// instance too: wait as long as it answers (checked every 5 s), then start ours at once.
+		// This is not a failure: it does not use the restart budget and does not loop.
+		if (code == 2 && TT::PortAnswers (TT::EnginePort, 500)) {
+			Log ("port " + std::to_string (TT::EnginePort) +
+				 " served by the engine of another ArchiCAD instance: that engine is used; ours starts when it stops");
+			while (g_engineWanted && TT::PortAnswers (TT::EnginePort, 500)) {
+				for (int t = 0; t < 20 && g_engineWanted; ++t)
+					Sleep (250);
+			}
+			if (!g_engineWanted)
+				break;
+			std::lock_guard<std::mutex> lock (g_lock);
+			DWORD error = 0;
+			if (StartProcess (error))
+				Log ("the other engine has stopped: ours started");
+			else
+				Log ("engine start failed (Windows error " + std::to_string (error) + ")");
+			continue;
+		}
 		// Step 4: restart budget of 20 per hour; the counter is reset when the window expires.
 		if (GetTickCount64 () - windowStart > 3600000ull) {
 			windowStart = GetTickCount64 ();

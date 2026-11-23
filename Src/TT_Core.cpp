@@ -16,12 +16,15 @@
 	#define WIN32_LEAN_AND_MEAN
 #endif
 #include <initializer_list>
+#include <winsock2.h>	// before windows.h (PortAnswers)
+#include <ws2tcpip.h>
 #include <windows.h>
+#pragma comment (lib, "Ws2_32.lib")
 #include <stdlib.h>
 
 namespace TT {
 
-const char* const AddOnVersion = "0.8.1";
+const char* const AddOnVersion = "0.8.2";
 
 // Same order as the items of the input / output language menus (MenuBase + 0 / + 1, generated
 // into RFIX/Tapir_TranslatorMenus.grc) and as the columns of dictionaries/_common.json.
@@ -735,6 +738,38 @@ bool PrepareEnvironment (const std::wstring& root, std::wstring& pythonPath)
 	bool ok = SetEnvVar (L"PYTHONPATH", pythonPath);
 	ok = SetEnvVar (L"TAPIR_TRANSLATOR_DIR", root) && ok;
 	return ok;
+}
+
+
+bool PortAnswers (int port, int timeoutMs)
+{
+	// Step 1: Winsock is reference-counted: one WSAStartup per call, balanced by WSACleanup.
+	WSADATA wsa;
+	if (WSAStartup (MAKEWORD (2, 2), &wsa) != 0)
+		return false;
+	bool answers = false;
+	SOCKET s = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (s != INVALID_SOCKET) {
+		// Step 2: non-blocking connect to 127.0.0.1:<port>, then wait at most timeoutMs for it to
+		// complete: success = a server is listening on that port.
+		u_long nonBlocking = 1;
+		ioctlsocket (s, FIONBIO, &nonBlocking);
+		sockaddr_in address = {};
+		address.sin_family = AF_INET;
+		address.sin_port = htons (static_cast<u_short> (port));
+		inet_pton (AF_INET, "127.0.0.1", &address.sin_addr);
+		connect (s, reinterpret_cast<sockaddr*> (&address), sizeof (address));
+		fd_set written, failed;
+		FD_ZERO (&written);
+		FD_ZERO (&failed);
+		FD_SET (s, &written);
+		FD_SET (s, &failed);
+		timeval delay = { timeoutMs / 1000, (timeoutMs % 1000) * 1000 };
+		answers = select (0, nullptr, &written, &failed, &delay) > 0 && FD_ISSET (s, &written) && !FD_ISSET (s, &failed);
+		closesocket (s);
+	}
+	WSACleanup ();
+	return answers;
 }
 
 

@@ -1186,8 +1186,22 @@ int main ()
 			Text (o, "logic", "ok");
 
 			// Step 2: start the test engine while the window is open.
+			Check ("PortAnswers: no engine on the port yet", !TT::PortAnswers (port, 300));
 			engine = StartEngine (port, journal);
 			Check ("test engine started", engine != nullptr);
+			// A second engine on the same port (second ArchiCAD instance) must stop at once with
+			// code 2, while the first one keeps answering: the add-on's watchdog then uses it.
+			Check ("PortAnswers: the engine answers on its port", TT::PortAnswers (port, 1000));
+			{
+				HANDLE second = StartEngine (port, journal);
+				DWORD code = 0;
+				const bool ended = second != nullptr && WaitForSingleObject (second, 5000) == WAIT_OBJECT_0 &&
+								   GetExitCodeProcess (second, &code) && code == 2;
+				if (second != nullptr)
+					CloseHandle (second);
+				Check ("second engine on the same port: exit code 2, the first one still answers",
+					   ended && TT::PortAnswers (port, 1000), std::to_string (code));
+			}
 			Check ("engine back: sentence outside the dictionaries translated live (< 25 s)",
 					  o.WaitFor (Shows ("unknown", "[en] Texte inconnu"), 25000));
 			Text (o, "unknown", "[en] Texte inconnu", "Texte inconnu");
@@ -1224,6 +1238,8 @@ int main ()
 			Check ("clean exit", o.Finish (code, 10000) && code == 0);
 		}
 		StopEngine (engine);
+		// Once the engine is gone, the port is free again (the watchdog then starts its own).
+		Check ("PortAnswers: port free after the engine stopped", !TT::PortAnswers (port, 300));
 
 		// Step 5: engine enabled in the settings but stopped: a new run must find its
 		// translations in the cache.

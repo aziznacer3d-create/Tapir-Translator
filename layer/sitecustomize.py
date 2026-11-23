@@ -66,7 +66,7 @@ Every internal error is written to log.txt and never reaches the script.
 import os
 import sys
 
-LAYER_VERSION = "0.8.1"
+LAYER_VERSION = "0.8.2"
 _PERIOD_MS = 300            # Period (ms) of the live check: settings / dictionaries reload, arrived translations
 _LOG_SIZE = 512 * 1024  # Beyond this size (bytes) the log file is deleted and starts again from zero
 
