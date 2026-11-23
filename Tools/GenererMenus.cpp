@@ -1,11 +1,18 @@
 // *****************************************************************************
-// Tapir Translator - GenererMenus : menus de l'add-on dans les 20 langues
+// Tapir Translator - GenererMenus: the add-on's menus in the 20 languages
 //
-//   Usage : GenererMenus.exe <RFIX/Tapir_TranslatorMenus.grc>
-//   Ecrit, pour chaque langue d'interface i, les 5 menus (STR# BaseMenus (i) + 0..4)
-//   et leurs aides (+ DecalageAides) a partir de Src/TT_Textes.cpp. Lance au build
-//   avant la compilation des ressources ; le fichier n'est reecrit que s'il change.
-//   L'add-on n'enregistre que les menus de la langue choisie (au demarrage).
+//   Usage: GenererMenus.exe <RFIX/Tapir_TranslatorMenus.grc>
+//   Build tool. For each UI language i it writes, from the texts of
+//   Src/TT_Textes.cpp, the 5 menus as 'STR#' resources (ids BaseMenus (i) + 0..4)
+//   and their status-bar help strings (same ids + DecalageAides):
+//     +0 input language, +1 output language, +2 Options,
+//     +3 online translator, +4 language of the tool itself.
+//   ArchiCAD fixes the menus at start-up, so all languages are compiled in and
+//   the add-on registers only the menus of the chosen language.
+//   Run by the MenusLocalises target before the resources are compiled; the
+//   file is rewritten only when its content changes, so the resources are
+//   not recompiled for nothing.
+//   Exit codes: 0 success (written or unchanged), 1 write error, 2 wrong arguments.
 // *****************************************************************************
 
 #include "TT_Textes.hpp"
@@ -16,12 +23,15 @@
 
 namespace {
 
+// Quotes a text as a GRC string literal. GRC strings have no escape for the
+// double quote, so " becomes ' ; a backslash is replaced by / so that no
+// escape sequence can appear in the generated string.
 std::string Chaine (const std::string& s)
 {
 	std::string r = "\"";
 	for (const char c : s) {
 		if (c == '"')
-			r += "'";		// pas de guillemet droit dans une chaine GRC
+			r += "'";		// no straight double quote inside a GRC string
 		else if (c == '\\')
 			r += "/";
 		else
@@ -30,15 +40,28 @@ std::string Chaine (const std::string& s)
 	return r + "\"";
 }
 
+// Appends one menu to the GRC text, as two 'STR#' resources.
+//   grc      : GRC text being built
+//   id       : resource id of the menu; its help strings use id + DecalageAides
+//   titre    : resource name (comment only, in French, not shown to the user)
+//   sousMenu : translated name of the submenu under "Tapir Translator"
+//   elements : translated menu items ("-" = separator)
+//   aides    : status-bar help of each item, same order as elements
+// Step 1: menu resource - "Tapir Translator", the submenu name, then the
+//         numbered items (the "[ n ]" comments are the usual GRC layout).
+// Step 2: help resource - two empty strings for the two menu levels, then one
+//         help string per item.
 void Menu (std::string& grc, short id, const char* titre, const std::string& sousMenu, const std::vector<std::string>& elements,
 		   const std::vector<std::string>& aides)
 {
+	// Step 1
 	grc += "'STR#' " + std::to_string (id) + " \"" + titre + "\" {\n";
 	grc += "/* [   ] */\t\t\"Tapir Translator\"\n";
 	grc += "/* [   ] */\t\t" + Chaine (sousMenu) + "\n";
 	for (size_t i = 0; i < elements.size (); ++i)
 		grc += "/* [" + std::to_string (i + 1) + "] */\t\t\t" + Chaine (elements[i]) + "\n";
 	grc += "}\n\n";
+	// Step 2
 	grc += "'STR#' " + std::to_string (id + TT::DecalageAides) + " \"" + titre + " (aides)\" {\n";
 	grc += "/* [   ] */\t\t\"\"\n/* [   ] */\t\t\"\"\n";
 	for (size_t i = 0; i < aides.size (); ++i)
@@ -49,50 +72,67 @@ void Menu (std::string& grc, short id, const char* titre, const std::string& sou
 }	// namespace
 
 
+// Entry point.
+// Step 1: check the argument (path of the .grc file to generate).
+// Step 2: build the whole GRC text (UTF-8 with BOM), language by language.
+// Step 3: compare with the existing file and write only if it changed.
 int main (int argc, char** argv)
 {
+	// Step 1
 	if (argc != 2) {
 		std::fprintf (stderr, "usage : GenererMenus <fichier.grc>\n");
 		return 2;
 	}
+	// Step 2: header comment of the generated file, then one block per language
 	std::string grc = "\xEF\xBB\xBF/* Genere par Tools/GenererMenus.cpp a partir de Src/TT_Textes.cpp : ne pas modifier a la main. */\n\n";
 	for (int l = 0; l < TT::NombreLanguesInterface; ++l) {
+		// T(x): text x in language l
 		const auto T = [l] (TT::Texte t) { return std::string (TT::Txt (t, l)); };
 		const short base = TT::BaseMenus (l);
 		grc += "/* ===== " + std::string (TT::CodeInterface (l)) + " ===== */\n\n";
 
+		// Names of the 20 languages (each one written in its own language,
+		// as given by TT::NomInterface), shared by the three language menus
 		std::vector<std::string> langues, aidesEntree, aidesSortie, aidesInterface;
 		for (int i = 0; i < TT::NombreLanguesInterface; ++i)
 			langues.push_back (TT::NomInterface (i));
 
+		// +0 input language: "Automatic detection" + the 20 languages
 		std::vector<std::string> e = { T (TT::M_AUTO) };
 		e.insert (e.end (), langues.begin (), langues.end ());
 		std::vector<std::string> a (1, T (TT::P_AUTO));
 		a.insert (a.end (), langues.size (), T (TT::P_ENTREE));
 		Menu (grc, base + 0, "Langue d'entree", T (TT::M_ENTREE), e, a);
 
+		// +1 output language: "No translation" + the 20 languages
 		e = { T (TT::M_AUCUNE) };
 		e.insert (e.end (), langues.begin (), langues.end ());
 		a = { T (TT::P_AUCUNE) };
 		a.insert (a.end (), langues.size (), T (TT::P_SORTIE));
 		Menu (grc, base + 1, "Langue de sortie", T (TT::M_SORTIE), e, a);
 
+		// +2 Options: online translation, collection of untranslated texts,
+		// separator, open the dictionaries folder, state report
 		Menu (grc, base + 2, "Options", T (TT::M_OPTIONS),
 			  { T (TT::M_EN_LIGNE), T (TT::M_COLLECTE), "-", T (TT::M_DOSSIER), T (TT::M_ETAT) },
 			  { T (TT::P_EN_LIGNE), T (TT::P_COLLECTE), "", T (TT::P_DOSSIER), T (TT::P_ETAT) });
 
+		// +3 online translator: the 5 providers (brand names, not translated),
+		// separator, keys file, term corrections file
 		Menu (grc, base + 3, "Traducteur en ligne", T (TT::M_TRADUCTEUR),
 			  { "DeepL", "Microsoft Translator", "Google Cloud Translation", "MyMemory (" + T (TT::M_SANS_CLE) + ")", "LibreTranslate",
 				"-", T (TT::M_CLES), T (TT::M_CORRECTIONS) },
 			  { T (TT::P_TRADUCTEUR), T (TT::P_TRADUCTEUR), T (TT::P_TRADUCTEUR), T (TT::P_TRADUCTEUR), T (TT::P_TRADUCTEUR), "",
 				T (TT::P_CLES), T (TT::P_CORRECTIONS) });
 
+		// +4 language of the tool: "Same as ArchiCAD" + the 20 languages
 		e = { T (TT::M_INTERFACE_AUTO) };
 		e.insert (e.end (), langues.begin (), langues.end ());
 		Menu (grc, base + 4, "Langue de l'outil", T (TT::M_INTERFACE), e, std::vector<std::string> (e.size (), T (TT::P_INTERFACE)));
 	}
 
-	// n'ecrit que si le contenu change (pas de recompilation des ressources inutile)
+	// Step 3: write only if the content changed (avoids a needless recompilation
+	// of the resources); the existing file is read in binary mode for an exact compare
 	std::string ancien;
 	FILE* f = nullptr;
 	if (fopen_s (&f, argv[1], "rb") == 0 && f != nullptr) {

@@ -1,9 +1,15 @@
 // *****************************************************************************
-// Tapir Translator - moteur : lecture / ecriture JSON minimale
+// Tapir Translator - engine: minimal JSON reader / writer (header only)
 //
-//   Juste ce que le protocole du moteur utilise : objets, tableaux, chaines
-//   (echappements \" \\ \/ \b \f \n \r \t \uXXXX avec paires de substitution),
-//   nombres, true / false / null. Les chaines sont rendues en UTF-8.
+//   Just what the engine needs for its HTTP protocol, cles.json and the
+//   online services' responses: objects, arrays, strings (escapes \" \\ \/
+//   \b \f \n \r \t and \uXXXX, including UTF-16 surrogate pairs), numbers,
+//   true / false / null. Strings are returned in UTF-8.
+//
+//   Json::Valeur   a parsed value (tagged union: genre + one member per kind)
+//   Json::Lecteur  recursive-descent parser (depth limited to 64)
+//   Json::Ecrire   indented writer (used to rewrite cles.json)
+//   Json::Chaine   quotes and escapes one string (used to build JSON by hand)
 // *****************************************************************************
 
 #ifndef TT_MOTEUR_JSON_HPP
@@ -17,15 +23,19 @@
 
 namespace Json {
 
+// One JSON value. Only the member matching "genre" is meaningful; a
+// default-constructed value is null.
 struct Valeur {
 	enum Genre { Nul, Booleen, Nombre, Chaine, Tableau, Objet };
 	Genre genre = Nul;
-	bool booleen = false;
-	double nombre = 0.0;
-	std::string chaine;
-	std::vector<Valeur> tableau;
-	std::map<std::string, Valeur> objet;
+	bool booleen = false;					// Booleen
+	double nombre = 0.0;					// Nombre
+	std::string chaine;						// Chaine (UTF-8)
+	std::vector<Valeur> tableau;			// Tableau
+	std::map<std::string, Valeur> objet;	// Objet (keys kept sorted; a repeated key keeps its last value)
 
+	// Member "nom" of an object, or nullptr if this is not an object or the
+	// member does not exist.
 	const Valeur* Champ (const std::string& nom) const
 	{
 		if (genre != Objet)
@@ -34,6 +44,8 @@ struct Valeur {
 		return it == objet.end () ? nullptr : &it->second;
 	}
 
+	// String member "nom" of an object, or defaut if it is missing or not a
+	// string.
 	std::string Texte (const std::string& nom, const std::string& defaut = std::string ()) const
 	{
 		const Valeur* v = Champ (nom);
@@ -42,10 +54,15 @@ struct Valeur {
 };
 
 
+// Recursive-descent JSON parser. Usage: Json::Lecteur (texte).Lire (valeur).
+// The reader keeps a reference to the text: the text must outlive it.
 class Lecteur {
 public:
 	explicit Lecteur (const std::string& texte) : s_ (texte) {}
 
+	// Parses the whole text into v. Returns false on a syntax error, on
+	// nesting deeper than 64 levels, or if anything but whitespace follows
+	// the value. On failure v may be partially filled.
 	bool Lire (Valeur& v)
 	{
 		Blancs ();
@@ -56,12 +73,16 @@ public:
 	}
 
 private:
+	// Skips JSON whitespace (space, tab, CR, LF).
 	void Blancs ()
 	{
 		while (i_ < s_.size () && (s_[i_] == ' ' || s_[i_] == '\t' || s_[i_] == '\r' || s_[i_] == '\n'))
 			++i_;
 	}
 
+	// Parses one value at the current position, chosen by its first character:
+	// '{' object, '[' array, '"' string, true / false / null, else a number.
+	// The depth counter protects the stack against hostile deeply nested input.
 	bool Element (Valeur& v)
 	{
 		if (i_ >= s_.size () || ++profondeur_ > 64)
@@ -93,6 +114,9 @@ private:
 		return ok;
 	}
 
+	// Parses an object; the current character is '{'.
+	// Step 1: empty object "{}".
+	// Step 2: loop on  "key" : value  followed by ',' (next member) or '}' (end).
 	bool LireObjet (Valeur& v)
 	{
 		v.genre = Valeur::Objet;
@@ -129,6 +153,9 @@ private:
 		}
 	}
 
+	// Parses an array; the current character is '['.
+	// Step 1: empty array "[]".
+	// Step 2: loop on  value  followed by ',' (next element) or ']' (end).
 	bool LireTableau (Valeur& v)
 	{
 		v.genre = Valeur::Tableau;
@@ -157,6 +184,9 @@ private:
 		}
 	}
 
+	// Parses a number: takes the longest run of the characters "+-0123456789.eE"
+	// and converts it with atof (lenient: the exact JSON number grammar is not
+	// checked). Fails if there is no such character (unknown token).
 	bool LireNombre (Valeur& v)
 	{
 		const size_t debut = i_;
@@ -169,6 +199,7 @@ private:
 		return true;
 	}
 
+	// Appends the code point cp to out, encoded in UTF-8 (1 to 4 bytes).
 	static void Utf8 (unsigned long cp, std::string& out)
 	{
 		if (cp < 0x80)
@@ -188,6 +219,8 @@ private:
 		}
 	}
 
+	// Reads the 4 hexadecimal digits of a \uXXXX escape into cp.
+	// Returns false if fewer than 4 characters remain or one is not a hex digit.
 	bool Hex4 (unsigned long& cp)
 	{
 		if (i_ + 4 > s_.size ())
@@ -208,9 +241,13 @@ private:
 		return true;
 	}
 
+	// Parses a string; the current character is the opening quote.
+	// Ordinary bytes are copied as they are (the text is UTF-8 already);
+	// escapes are decoded. Returns false on an unknown escape or a missing
+	// closing quote.
 	bool LireChaine (std::string& out)
 	{
-		++i_;	// "
+		++i_;	// skip the opening quote
 		out.clear ();
 		while (i_ < s_.size ()) {
 			const char c = s_[i_++];
@@ -233,6 +270,8 @@ private:
 				case 'r':  out += '\r'; break;
 				case 't':  out += '\t'; break;
 				case 'u': {
+					// \uXXXX; a high surrogate (D800-DBFF) followed by a second
+					// \uXXXX is combined with it into one code point above U+FFFF
 					unsigned long cp = 0;
 					if (!Hex4 (cp))
 						return false;
@@ -253,16 +292,20 @@ private:
 		return false;
 	}
 
-	const std::string& s_;
-	size_t i_ = 0;
-	int profondeur_ = 0;
+	const std::string& s_;		// text being parsed (not copied)
+	size_t i_ = 0;				// current position in s_
+	int profondeur_ = 0;		// current nesting depth
 };
 
 
+// Forward declaration: Ecrire uses Chaine, defined below.
 inline std::string Chaine (const std::string& texte);
 
-// Ecrit une valeur avec indentation (les cles d'un objet sortent dans l'ordre alphabetique,
-// celles qui commencent par "_" -- les explications -- en premier)
+// Appends v to sortie as indented JSON (2 spaces per level).
+//   retrait : indentation of the current level (0 at the top)
+// The keys of an object are written in alphabetical order (std::map order),
+// except that keys starting with "_" (explanations meant for the user) come
+// first. Numbers use "%.15g". Empty arrays / objects are written "[]" / "{}".
 inline void Ecrire (const Valeur& v, std::string& sortie, int retrait = 0)
 {
 	const std::string marge (static_cast<size_t> (retrait + 2), ' ');
@@ -296,6 +339,7 @@ inline void Ecrire (const Valeur& v, std::string& sortie, int retrait = 0)
 				sortie += "{}";
 				break;
 			}
+			// Order of the members: "_..." keys first, then the others
 			std::vector<const std::pair<const std::string, Valeur>*> champs;
 			for (const auto& c : v.objet) {
 				if (!c.first.empty () && c.first[0] == '_')
@@ -317,6 +361,9 @@ inline void Ecrire (const Valeur& v, std::string& sortie, int retrait = 0)
 	}
 }
 
+// Returns texte as a quoted JSON string literal: quote, backslash, LF, CR and
+// tab get their short escape, other control characters below 0x20 become
+// \u00XX; every other byte (including UTF-8 sequences) is copied unchanged.
 inline std::string Chaine (const std::string& texte)
 {
 	std::string r = "\"";

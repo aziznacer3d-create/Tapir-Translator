@@ -1,8 +1,15 @@
 // *****************************************************************************
-// Tapir Translator - moteur : fenetre "quota MyMemory atteint" (voir Dialogue.hpp)
+// Tapir Translator - engine: "MyMemory quota reached" window (see Dialogue.hpp)
 //
-//   Fenetre Win32 construite a la main (pas de ressource), au premier plan,
-//   police des messages de Windows, mise a l'echelle de l'affichage (DPI).
+//   A plain Win32 window built by code (no resource file, the engine has
+//   none), always on top, using the Windows message font and scaled to the
+//   display DPI. Two variants:
+//     - anonymous (no e-mail yet): explanation, e-mail input field, error
+//       line, "Save" and "Later" buttons;
+//     - with e-mail (the larger quota is reached too): explanation and a
+//       single "OK" button.
+//   IsDialogMessage provides Tab navigation, Enter (default button) and
+//   Escape (IDCANCEL) as in a real dialog box.
 // *****************************************************************************
 
 #include "Dialogue.hpp"
@@ -18,18 +25,23 @@
 
 namespace {
 
+// Control identifiers. The two buttons use IDOK / IDCANCEL so that Enter and
+// Escape (translated by IsDialogMessage) trigger them.
 enum { kTexte = 100, kEmail = 101, kEnregistrer = IDOK, kPlusTard = IDCANCEL, kErreur = 102 };
 
+// Window state, attached to the window with GWLP_USERDATA and read by the
+// window procedure.
 struct Etat {
-	ReponseQuota reponse = ReponseQuota::Fermee;
-	std::wstring email;
-	bool avecEmail = false;
-	HFONT police = nullptr;
-	HWND champ = nullptr;
-	HWND erreur = nullptr;
-	std::wstring invalide;		// "Adresse e-mail invalide." dans la langue de l'outil
+	ReponseQuota reponse = ReponseQuota::Fermee;	// result, Fermee until a button is pressed
+	std::wstring email;			// address entered (valid when reponse == Enregistree)
+	bool avecEmail = false;		// information-only variant (see Dialogue.hpp)
+	HFONT police = nullptr;		// Windows message font, deleted at the end
+	HWND champ = nullptr;		// e-mail input field (anonymous variant only)
+	HWND erreur = nullptr;		// error line under the field (anonymous variant only)
+	std::wstring invalide;		// "Invalid e-mail address." in the tool's language
 };
 
+// Converts a UTF-8 string to UTF-16 (Win32 W functions).
 std::wstring Large (const std::string& s)
 {
 	if (s.empty ())
@@ -40,6 +52,7 @@ std::wstring Large (const std::string& s)
 	return r;
 }
 
+// Converts a UTF-16 string back to UTF-8.
 std::string Etroit (const std::wstring& s)
 {
 	if (s.empty ())
@@ -50,6 +63,10 @@ std::string Etroit (const std::wstring& s)
 	return r;
 }
 
+// Minimal e-mail check (enough to catch typing mistakes, not RFC 5322):
+// an "@" that is not the first character, a "." somewhere after it, no
+// space, and no trailing ".". An empty string fails the first test, so
+// e.back() is never reached on it.
 bool EmailValide (const std::wstring& e)
 {
 	const size_t a = e.find (L'@');
@@ -57,12 +74,22 @@ bool EmailValide (const std::wstring& e)
 		   e.back () != L'.';
 }
 
+// Window procedure of the quota window.
+//   WM_COMMAND "Save" (anonymous variant): validate the address, keep the
+//              window open with an error message if invalid, otherwise store
+//              it, set Enregistree and close.
+//   WM_COMMAND "Later", or "OK" (information variant): set PlusTard (or
+//              Fermee in the information variant) and close.
+//   WM_CLOSE   : close; the answer stays Fermee.
+//   WM_DESTROY : end the message loop of DemanderEmailMyMemory.
+// The state pointer is null for the messages sent before SetWindowLongPtrW.
 LRESULT CALLBACK Procedure (HWND fenetre, UINT message, WPARAM w, LPARAM l)
 {
 	Etat* etat = reinterpret_cast<Etat*> (GetWindowLongPtrW (fenetre, GWLP_USERDATA));
 	switch (message) {
 		case WM_COMMAND:
 			if (etat != nullptr && LOWORD (w) == kEnregistrer && !etat->avecEmail) {
+				// Step 1: read the field and trim leading / trailing spaces
 				wchar_t tampon[256] = {};
 				GetWindowTextW (etat->champ, tampon, 256);
 				std::wstring e = tampon;
@@ -70,11 +97,13 @@ LRESULT CALLBACK Procedure (HWND fenetre, UINT message, WPARAM w, LPARAM l)
 					e.pop_back ();
 				while (!e.empty () && e.front () == L' ')
 					e.erase (0, 1);
+				// Step 2: invalid -> message under the field, focus back to it
 				if (!EmailValide (e)) {
 					SetWindowTextW (etat->erreur, etat->invalide.c_str ());
 					SetFocus (etat->champ);
 					return 0;
 				}
+				// Step 3: valid -> keep it and close the window
 				etat->email = e;
 				etat->reponse = ReponseQuota::Enregistree;
 				DestroyWindow (fenetre);
@@ -101,14 +130,19 @@ LRESULT CALLBACK Procedure (HWND fenetre, UINT message, WPARAM w, LPARAM l)
 }	// namespace
 
 
+// Builds and shows the quota window, runs its message loop and returns the
+// answer (see Dialogue.hpp).
 ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int langue)
 {
+	// Step 1: DPI awareness and scaling helper E(): sizes below are written
+	// for 96 DPI and scaled to the screen's DPI
 	SetProcessDPIAware ();
 	HDC ecran = GetDC (nullptr);
 	const int dpi = GetDeviceCaps (ecran, LOGPIXELSY);
 	ReleaseDC (nullptr, ecran);
 	const auto E = [dpi] (int v) { return MulDiv (v, dpi, 96); };
 
+	// Step 2: window class (dialog-coloured background, information icon)
 	HINSTANCE instance = GetModuleHandleW (nullptr);
 	WNDCLASSW classe = {};
 	classe.lpfnWndProc = Procedure;
@@ -119,6 +153,7 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 	classe.lpszClassName = L"TapirTranslatorQuota";
 	RegisterClassW (&classe);
 
+	// Step 3: state, texts in the UI language, Windows message font
 	Etat etat;
 	etat.avecEmail = avecEmail;
 	etat.invalide = Large (TT::Txt (TT::D_INVALIDE, langue));
@@ -128,6 +163,9 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 	SystemParametersInfoW (SPI_GETNONCLIENTMETRICS, sizeof (mesures), &mesures, 0);
 	etat.police = CreateFontIndirectW (&mesures.lfMessageFont);
 
+	// Step 4: top-level window centred on the primary screen; the client area
+	// is 500 x 250 (anonymous) or 500 x 200 (information), AdjustWindowRectEx
+	// adds the frame and title bar
 	const int largeur = E (500), hauteur = E (avecEmail ? 200 : 250);
 	RECT zone = { 0, 0, largeur, hauteur };
 	AdjustWindowRectEx (&zone, WS_CAPTION | WS_SYSMENU, FALSE, WS_EX_DLGMODALFRAME | WS_EX_TOPMOST);
@@ -139,8 +177,11 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 		DeleteObject (etat.police);
 		return ReponseQuota::Fermee;
 	}
+	// The window procedure reads the state from GWLP_USERDATA
 	SetWindowLongPtrW (fenetre, GWLP_USERDATA, reinterpret_cast<LONG_PTR> (&etat));
 
+	// Step 5: explanation text; the information variant names the menu
+	// "Tapir Translator > <online translator>" to choose another provider
 	const std::wstring texte = avecEmail
 		? Large (TT::TxtF (TT::D_AVEC_EMAIL, langue, { { "menu", std::string ("Tapir Translator > ") + TT::Txt (TT::M_TRADUCTEUR, langue) } }))
 		: Large (TT::Txt (TT::D_ANONYME, langue));
@@ -148,6 +189,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 									 fenetre, reinterpret_cast<HMENU> (static_cast<INT_PTR> (kTexte)), instance, nullptr);
 	SendMessageW (statique, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 
+	// Step 6 (anonymous variant): label, input field pre-filled with the
+	// address, and an initially empty error line below it
 	int y = E (avecEmail ? 154 : 130);
 	if (!avecEmail) {
 		HWND libelle = CreateWindowExW (0, L"STATIC", Large (TT::Txt (TT::D_LIBELLE, langue)).c_str (), WS_CHILD | WS_VISIBLE, E (16), y + E (4),
@@ -162,6 +205,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 		SendMessageW (etat.erreur, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 		y += E (62);
 	}
+	// Step 7: buttons aligned on the right - default button "Save" (or "OK"),
+	// then "Later" in the anonymous variant
 	const int lb = E (110), hb = E (30);
 	const std::wstring enregistrer = avecEmail ? std::wstring (L"OK") : Large (TT::Txt (TT::D_ENREGISTRER, langue));
 	const std::wstring plusTardTexte = Large (TT::Txt (TT::D_PLUS_TARD, langue));
@@ -175,6 +220,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 		SendMessageW (plusTard, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 	}
 
+	// Step 8: show it in front (the engine has no other window), flash the
+	// taskbar button, select the field content so typing replaces it
 	ShowWindow (fenetre, SW_SHOWNORMAL);
 	SetForegroundWindow (fenetre);
 	FlashWindow (fenetre, TRUE);
@@ -183,6 +230,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 		SendMessageW (etat.champ, EM_SETSEL, 0, -1);
 	}
 
+	// Step 9: message loop until WM_DESTROY posts WM_QUIT; IsDialogMessage
+	// handles Tab, Enter and Escape
 	MSG msg;
 	while (GetMessageW (&msg, nullptr, 0, 0) > 0) {
 		if (!IsDialogMessageW (fenetre, &msg)) {
@@ -190,6 +239,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int lang
 			DispatchMessageW (&msg);
 		}
 	}
+	// Step 10: clean up (the class is unregistered so a later call can
+	// register it again) and return the address entered, in UTF-8
 	DeleteObject (etat.police);
 	UnregisterClassW (classe.lpszClassName, instance);
 	if (etat.reponse == ReponseQuota::Enregistree)

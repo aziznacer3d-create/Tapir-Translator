@@ -1,5 +1,12 @@
 // *****************************************************************************
-// Tapir Translator - coeur sans ArchiCAD (voir TT_Coeur.hpp)
+// Tapir Translator - ArchiCAD-independent core (implementation, see TT_Coeur.hpp)
+//
+//   ROLE IN THE SYSTEM
+//   Implements the language/translator tables, the Win32 file and environment
+//   helpers, the installation of the translation layer and its data files, the
+//   reglages.json reader/writer, the user file templates (cles.json,
+//   corrections.json, _perso.json) and the PYTHONPATH preparation. Linked both
+//   into the add-on and into the test bench, so it never calls ArchiCAD.
 // *****************************************************************************
 
 #include "TT_Coeur.hpp"
@@ -15,8 +22,9 @@ namespace TT {
 
 const char* const VersionAddOn = "0.7.0";
 
-// Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
-// colonnes de dictionnaires/_commun.json
+// Same order as the items of the input / output language menus (BaseMenus + 0 / + 1, generated
+// into RFIX/Tapir_TranslatorMenus.grc) and as the columns of dictionnaires/_commun.json.
+// Entry 0 (empty code) is the "automatic detection" / "no translation" / "as ArchiCAD" item.
 const Langue Langues[] = {
 	{ "",	"aucune" },
 	{ "fr",	"Français" },
@@ -42,6 +50,7 @@ const Langue Langues[] = {
 };
 const int NombreLangues = static_cast<int> (sizeof (Langues) / sizeof (Langues[0]));
 
+// Online translators: code, display name, what cles.json must contain (in menu order).
 const Fournisseur Fournisseurs[] = {
 	{ "deepl",			"DeepL",					"cle (compte DeepL API Free)" },
 	{ "microsoft",		"Microsoft Translator",		"cle + region (Azure, niveau gratuit F0)" },
@@ -51,6 +60,8 @@ const Fournisseur Fournisseurs[] = {
 };
 const int NombreFournisseurs = static_cast<int> (sizeof (Fournisseurs) / sizeof (Fournisseurs[0]));
 
+// Validates a translator code read from reglages.json. Besides the menu entries, it accepts
+// "essai" (the fake engine of the test bench) and "local" (offline model, build option).
 bool FournisseurConnu (const std::string& code)
 {
 	if (code == "essai" || code == "local")
@@ -64,9 +75,11 @@ bool FournisseurConnu (const std::string& code)
 
 
 // =============================================================================
-//  Textes
+//  Text conversions
 // =============================================================================
 
+// UTF-16 -> UTF-8. Two-pass Win32 conversion: first ask for the required size, then convert.
+// Returns "" for an empty input or on failure.
 std::string Utf8 (const std::wstring& texte)
 {
 	if (texte.empty ())
@@ -80,6 +93,7 @@ std::string Utf8 (const std::wstring& texte)
 }
 
 
+// UTF-8 -> UTF-16, same two-pass scheme as Utf8. Returns L"" for an empty input or on failure.
 std::wstring DepuisUtf8 (const std::string& texte)
 {
 	if (texte.empty ())
@@ -93,6 +107,9 @@ std::wstring DepuisUtf8 (const std::string& texte)
 }
 
 
+// Builds a readable message for a Win32 error code: "erreur Windows <code> (<system text>)".
+// The system text comes from FormatMessageW (which allocates the buffer, freed here) with its
+// trailing line breaks and spaces removed.
 static std::wstring MessageErreur (DWORD code)
 {
 	wchar_t* tampon = nullptr;
@@ -112,14 +129,18 @@ static std::wstring MessageErreur (DWORD code)
 
 
 // =============================================================================
-//  Fichiers
+//  Files and environment variables
 // =============================================================================
 
+// Reads an environment variable of the current process. Returns "" if it is not set.
 std::wstring LireVariable (const wchar_t* nom)
 {
+	// Step 1: ask for the required size (in characters, terminating zero included).
 	const DWORD n = GetEnvironmentVariableW (nom, nullptr, 0);
 	if (n == 0)
 		return std::wstring ();
+	// Step 2: read it; a result of 0 or larger than the buffer means the variable vanished or
+	// grew in between, which is treated as "not set".
 	std::vector<wchar_t> tampon (n + 1, L'\0');
 	const DWORD lu = GetEnvironmentVariableW (nom, tampon.data (), n + 1);
 	if (lu == 0 || lu > n)
@@ -128,6 +149,8 @@ std::wstring LireVariable (const wchar_t* nom)
 }
 
 
+// Working folder of the add-on, the layer and the engine: %APPDATA%\Tapir Translator.
+// Returns "" when APPDATA is not defined.
 std::wstring DossierParDefaut ()
 {
 	const std::wstring appData = LireVariable (L"APPDATA");
@@ -137,6 +160,8 @@ std::wstring DossierParDefaut ()
 }
 
 
+// Joins a folder and a name. No separator is added if the folder already ends with '\' or '/';
+// an empty folder returns the name alone.
 std::wstring Joindre (const std::wstring& dossier, const std::wstring& nom)
 {
 	if (dossier.empty ())
@@ -148,6 +173,7 @@ std::wstring Joindre (const std::wstring& dossier, const std::wstring& nom)
 }
 
 
+// True if 'chemin' exists and is a file (not a folder).
 bool FichierExiste (const std::wstring& chemin)
 {
 	const DWORD a = GetFileAttributesW (chemin.c_str ());
@@ -155,6 +181,7 @@ bool FichierExiste (const std::wstring& chemin)
 }
 
 
+// True if 'chemin' exists and is a folder.
 bool DossierExiste (const std::wstring& chemin)
 {
 	const DWORD a = GetFileAttributesW (chemin.c_str ());
@@ -162,12 +189,15 @@ bool DossierExiste (const std::wstring& chemin)
 }
 
 
+// Creates a folder and, recursively, its missing parents (like "mkdir -p").
+// Returns true if the folder exists at the end.
 bool CreerDossier (const std::wstring& chemin)
 {
 	if (chemin.empty ())
 		return false;
 	if (DossierExiste (chemin))
 		return true;
+	// Create the parent first. "sep > 2" stops the recursion at the drive root ("C:\").
 	const size_t sep = chemin.find_last_of (L"\\/");
 	if (sep != std::wstring::npos && sep > 2)
 		CreerDossier (chemin.substr (0, sep));
@@ -175,6 +205,9 @@ bool CreerDossier (const std::wstring& chemin)
 }
 
 
+// Reads a whole file as raw bytes into 'contenu' (cleared first). The file is opened with full
+// sharing, because the layer, the engine or Notepad may have it open at the same time.
+// Returns false if the file cannot be opened or a read fails.
 bool LireFichier (const std::wstring& chemin, std::string& contenu)
 {
 	contenu.clear ();
@@ -199,8 +232,11 @@ bool LireFichier (const std::wstring& chemin, std::string& contenu)
 }
 
 
+// Atomic write of 'contenu' to 'chemin' (see TT_Coeur.hpp). On failure 'erreur' receives a
+// readable message and the temporary file is removed.
 bool EcrireFichier (const std::wstring& chemin, const std::string& contenu, std::wstring& erreur)
 {
+	// Step 1: write everything into "<chemin>.tmp", in chunks of at most 1 MB.
 	const std::wstring tmp = chemin + L".tmp";
 	HANDLE f = CreateFileW (tmp.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (f == INVALID_HANDLE_VALUE) {
@@ -219,6 +255,7 @@ bool EcrireFichier (const std::wstring& chemin, const std::string& contenu, std:
 		}
 		ecrit += fait;
 	}
+	// Step 2: keep the error code before CloseHandle can overwrite it, then close.
 	const DWORD codeEcriture = ok ? 0 : GetLastError ();
 	CloseHandle (f);
 	if (!ok) {
@@ -226,7 +263,8 @@ bool EcrireFichier (const std::wstring& chemin, const std::string& contenu, std:
 		DeleteFileW (tmp.c_str ());
 		return false;
 	}
-	// Le fichier peut etre ouvert un instant en lecture par la couche Python : on reessaie.
+	// Step 3: replace the target with the temporary file. The target may be open for reading
+	// for a moment by the Python layer, so the move is retried (50 times, 20 ms apart = ~1 s).
 	for (int essai = 0; essai < 50; ++essai) {
 		if (MoveFileExW (tmp.c_str (), chemin.c_str (), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 			return true;
@@ -238,6 +276,7 @@ bool EcrireFichier (const std::wstring& chemin, const std::string& contenu, std:
 }
 
 
+// Names (without path) of the *.json files of a folder; empty if the folder does not exist.
 std::vector<std::wstring> ListerJson (const std::wstring& dossier)
 {
 	std::vector<std::wstring> res;
@@ -254,6 +293,9 @@ std::vector<std::wstring> ListerJson (const std::wstring& dossier)
 }
 
 
+// Deletes a folder recursively: files first (read-only attribute cleared), sub-folders by
+// recursion, then the folder itself. Errors are ignored: a file in use (e.g. a running engine)
+// simply stays, and the caller checks DossierExiste afterwards.
 void SupprimerDossier (const std::wstring& dossier)
 {
 	WIN32_FIND_DATAW d;
@@ -277,6 +319,7 @@ void SupprimerDossier (const std::wstring& dossier)
 }
 
 
+// Names (without path) of the direct sub-folders of a folder, "." and ".." excluded.
 std::vector<std::wstring> ListerDossiers (const std::wstring& dossier)
 {
 	std::vector<std::wstring> res;
@@ -294,10 +337,11 @@ std::vector<std::wstring> ListerDossiers (const std::wstring& dossier)
 }
 
 
+// Counts the untranslated entries of a "manquants" file (see TT_Coeur.hpp).
 int CompterVides (const std::string& json)
 {
-	// Les fichiers de manquants sont ecrits par la couche (json.dump, indent=2) :
-	// une entree vide s'y lit toujours  "...": ""
+	// The manquants files are written by the layer (json.dump, indent=2), so an empty entry
+	// always reads exactly  "...": ""  and a simple text search is enough.
 	int n = 0;
 	size_t pos = 0;
 	const std::string motif = "\": \"\"";
@@ -309,12 +353,15 @@ int CompterVides (const std::string& json)
 }
 
 
+// Returns the last 'nombre' non-empty lines of a text file (used to show the end of
+// journal.txt). Lines are split on '\n'; a trailing '\r' is removed.
 std::vector<std::string> DernieresLignes (const std::wstring& chemin, int nombre)
 {
 	std::vector<std::string> lignes;
 	std::string contenu;
 	if (!LireFichier (chemin, contenu))
 		return lignes;
+	// Step 1: split the whole file into non-empty lines.
 	size_t debut = 0;
 	while (debut < contenu.size ()) {
 		size_t fin = contenu.find ('\n', debut);
@@ -327,6 +374,7 @@ std::vector<std::string> DernieresLignes (const std::wstring& chemin, int nombre
 			lignes.push_back (ligne);
 		debut = fin + 1;
 	}
+	// Step 2: keep only the last 'nombre' lines.
 	if (static_cast<int> (lignes.size ()) > nombre)
 		lignes.erase (lignes.begin (), lignes.end () - nombre);
 	return lignes;
@@ -334,11 +382,14 @@ std::vector<std::string> DernieresLignes (const std::wstring& chemin, int nombre
 
 
 // =============================================================================
-//  Couche et dictionnaires
+//  Translation layer and dictionaries
 // =============================================================================
 
+// Installs the translation layer and the data files (see TT_Coeur.hpp). Called at every
+// ArchiCAD start; files are only rewritten when their content differs.
 bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& journal)
 {
+	// Step 1: create the folder tree: <racine>, couche, dictionnaires, manquants.
 	bool ok = true;
 	const std::wstring couche = Joindre (racine, L"couche");
 	const std::wstring dictionnaires = Joindre (racine, L"dictionnaires");
@@ -351,6 +402,8 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 	if (!ok)
 		return false;
 
+	// Step 2: couche\sitecustomize.py, embedded in the add-on (TT_Embarque.hpp). It must always be
+	// the add-on's own version, so it is rewritten whenever the file on disk differs.
 	std::wstring erreur;
 	const std::wstring sitecustomize = Joindre (couche, L"sitecustomize.py");
 	const std::string source (reinterpret_cast<const char*> (Embarque::Couche), Embarque::CoucheTaille);
@@ -364,8 +417,8 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 		ok = false;
 	}
 
-	// _commun.json est celui de la version de l'add-on : toujours remplace.
-	// Les ajouts de l'utilisateur vont dans _perso.json (jamais touche, prioritaire).
+	// Step 3: dictionnaires\_commun.json belongs to the add-on version: always replaced when it
+	// differs. The user's own additions go into _perso.json (never touched, higher priority).
 	const std::wstring commun = Joindre (dictionnaires, L"_commun.json");
 	const std::string contenu (reinterpret_cast<const char*> (Embarque::Commun), Embarque::CommunTaille);
 	std::string existant;
@@ -377,6 +430,8 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 		journal.push_back (erreur);
 		ok = false;
 	}
+	// Step 4: dictionnaires\_perso.json, created once with an explanation and one example line
+	// (multilingual format 2). A failure here does not make the installation fail.
 	const std::wstring perso = Joindre (dictionnaires, L"_perso.json");
 	if (!FichierExiste (perso)) {
 		const std::string modele =
@@ -390,6 +445,7 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 		if (EcrireFichier (perso, modele, erreur))
 			journal.push_back (L"dictionnaire personnel cree : " + perso);
 	}
+	// Step 5: templates of cles.json and corrections.json, only if missing (also non-fatal).
 	if (!FichierExiste (CheminCles (racine)) && CreerModeleCles (racine, erreur))
 		journal.push_back (L"fichier des cles cree : " + CheminCles (racine));
 	if (!FichierExiste (CheminCorrections (racine)) && CreerModeleCorrections (racine, erreur))
@@ -399,9 +455,12 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 
 
 // =============================================================================
-//  Reglages (reglages.json, relu en direct par la couche)
+//  Settings (reglages.json, re-read live by the layer)
+//  The file is small and written only by EcrireReglages, so it is read with a minimal
+//  key search instead of a full JSON parser (this core has no dependency).
 // =============================================================================
 
+// True if 'code' is one of the codes of Langues[] (the empty code included).
 static bool LangueConnue (const std::string& code)
 {
 	for (int i = 0; i < NombreLangues; ++i) {
@@ -412,8 +471,12 @@ static bool LangueConnue (const std::string& code)
 }
 
 
+// Finds the value of a key in a flat JSON text: returns the position of the first non-blank
+// character after  "cle" :  or std::string::npos if the key (or its colon) is not found.
+// Only the first occurrence of the key is considered.
 static size_t ApresCle (const std::string& json, const char* cle)
 {
+	// Step 1: locate the quoted key, then the following colon.
 	const std::string motif = std::string ("\"") + cle + "\"";
 	size_t pos = json.find (motif);
 	if (pos == std::string::npos)
@@ -421,6 +484,7 @@ static size_t ApresCle (const std::string& json, const char* cle)
 	pos = json.find (':', pos + motif.size ());
 	if (pos == std::string::npos)
 		return pos;
+	// Step 2: skip the colon and any white space.
 	++pos;
 	while (pos < json.size () && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n'))
 		++pos;
@@ -428,12 +492,16 @@ static size_t ApresCle (const std::string& json, const char* cle)
 }
 
 
+// Reads <racine>\reglages.json. Never fails: a missing file, a missing key or an unknown value
+// keeps the default of Reglages.
 Reglages LireReglages (const std::wstring& racine)
 {
 	Reglages r;
 	std::string json;
 	if (!LireFichier (Joindre (racine, L"reglages.json"), json))
 		return r;
+	// Step 1: the three language codes (i = 0 "langue", 1 "entree", 2 "interface"), kept only
+	// when they are string values and known codes.
 	for (int i = 0; i < 3; ++i) {
 		const size_t pos = ApresCle (json, i == 0 ? "langue" : (i == 1 ? "entree" : "interface"));
 		if (pos != std::string::npos && pos < json.size () && json[pos] == '"') {
@@ -445,12 +513,14 @@ Reglages LireReglages (const std::wstring& racine)
 			}
 		}
 	}
+	// Step 2: the two booleans (anything other than the literal true counts as false).
 	size_t pos = ApresCle (json, "collecte");
 	if (pos != std::string::npos)
 		r.collecte = json.compare (pos, 4, "true") == 0;
 	pos = ApresCle (json, "moteur");
 	if (pos != std::string::npos)
 		r.moteur = json.compare (pos, 4, "true") == 0;
+	// Step 3: the translator code, kept only if it is known.
 	pos = ApresCle (json, "fournisseur");
 	if (pos != std::string::npos && pos < json.size () && json[pos] == '"') {
 		const size_t fin = json.find ('"', pos + 1);
@@ -461,12 +531,16 @@ Reglages LireReglages (const std::wstring& racine)
 }
 
 
+// Path of the translators' credentials file: <racine>\cles.json.
 std::wstring CheminCles (const std::wstring& racine)
 {
 	return Joindre (racine, L"cles.json");
 }
 
 
+// Creates cles.json with one empty section per translator, each with a "_ou" hint telling
+// where to get the key. Returns true at once if the file already exists (never overwritten,
+// it holds the user's keys).
 bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur)
 {
 	const std::wstring chemin = CheminCles (racine);
@@ -503,12 +577,17 @@ bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur)
 }
 
 
+// Path of the term corrections file: <racine>\corrections.json.
 std::wstring CheminCorrections (const std::wstring& racine)
 {
 	return Joindre (racine, L"corrections.json");
 }
 
 
+// Creates corrections.json pre-filled with the common mistakes of online translators on
+// ArchiCAD vocabulary, for fr, de, es, it and pt. Returns true at once if the file already
+// exists (never overwritten: the user edits it). The template is written as two raw string
+// literals (fr, then de/es/it/pt) concatenated into one std::string.
 bool CreerModeleCorrections (const std::wstring& racine, std::wstring& erreur)
 {
 	const std::wstring chemin = CheminCorrections (racine);
@@ -567,12 +646,18 @@ bool CreerModeleCorrections (const std::wstring& racine, std::wstring& erreur)
 }
 
 
+// Writes <racine>\reglages.json atomically (the layer re-reads it every 0.3 s).
+// Returns false, with 'erreur' set, if a language code is unknown or the write fails.
 bool EcrireReglages (const std::wstring& racine, const Reglages& reglages, std::wstring& erreur)
 {
+	// Step 1: refuse unknown input / output languages.
 	if (!LangueConnue (reglages.langue) || !LangueConnue (reglages.entree)) {
 		erreur = L"langue inconnue : " + DepuisUtf8 (reglages.entree) + L" -> " + DepuisUtf8 (reglages.langue);
 		return false;
 	}
+	// Step 2: build the JSON by hand. An unknown translator falls back to "mymemory" and an
+	// unknown tool language to "" (same as ArchiCAD). "port" tells the layer where the engine
+	// listens; "ecrit_par" records the writing version.
 	CreerDossier (racine);
 	std::string json = "{\n";
 	json += "  \"entree\": \"" + reglages.entree + "\",\n";
@@ -584,14 +669,16 @@ bool EcrireReglages (const std::wstring& racine, const Reglages& reglages, std::
 	json += "  \"port\": " + std::to_string (PortMoteur) + ",\n";
 	json += std::string ("  \"ecrit_par\": \"Tapir Translator ") + VersionAddOn + "\"\n";
 	json += "}\n";
+	// Step 3: atomic write.
 	return EcrireFichier (Joindre (racine, L"reglages.json"), json, erreur);
 }
 
 
 // =============================================================================
-//  Environnement du processus (herite par les scripts que Tapir lance)
+//  Process environment (inherited by the scripts that Tapir launches)
 // =============================================================================
 
+// ASCII lower-case copy of a string, for case-insensitive path comparison (Windows paths).
 static std::wstring Minuscules (std::wstring s)
 {
 	for (wchar_t& c : s) {
@@ -602,21 +689,29 @@ static std::wstring Minuscules (std::wstring s)
 }
 
 
+// Sets an environment variable of the current process in both places where it can be read.
+// Returns the result of SetEnvironmentVariableW (the one that matters for Tapir).
 static bool PoserVariable (const wchar_t* nom, const std::wstring& valeur)
 {
-	// SetEnvironmentVariableW : bloc d'environnement du processus (CreateProcess, que
-	// Tapir utilise). _wputenv_s : copie du CRT, pour un lanceur qui passerait par le CRT.
+	// SetEnvironmentVariableW: the process environment block (inherited through CreateProcess,
+	// which Tapir uses). _wputenv_s: the CRT's own copy, for a launcher that would go through
+	// the CRT.
 	const bool ok = SetEnvironmentVariableW (nom, valeur.c_str ()) != 0;
 	_wputenv_s (nom, valeur.c_str ());
 	return ok;
 }
 
 
+// Prepares ArchiCAD's environment so that every Python script launched by Tapir imports the
+// layer (see TT_Coeur.hpp). Returns false if a variable could not be set.
 bool PreparerEnvironnement (const std::wstring& racine, std::wstring& pythonPath)
 {
+	// Step 1: current PYTHONPATH of ArchiCAD (possibly empty).
 	const std::wstring couche = Joindre (racine, L"couche");
 	const std::wstring ancien = LireVariable (L"PYTHONPATH");
 
+	// Step 2: is the layer folder already in it? Each ';'-separated entry is compared
+	// case-insensitively, ignoring trailing slashes, so the entry is never added twice.
 	bool dejaLa = false;
 	size_t debut = 0;
 	while (debut <= ancien.size ()) {
@@ -631,7 +726,11 @@ bool PreparerEnvironnement (const std::wstring& racine, std::wstring& pythonPath
 		debut = fin + 1;
 	}
 
+	// Step 3: otherwise put it first, ahead of the previous entries (which are kept after it),
+	// so that Python's site module imports our sitecustomize.py at interpreter start-up.
 	pythonPath = dejaLa ? ancien : (ancien.empty () ? couche : couche + L";" + ancien);
+	// Step 4: set PYTHONPATH and TAPIR_TRANSLATOR_DIR (the layer finds its settings,
+	// dictionaries and journal there). Both are attempted even if the first one fails.
 	bool ok = PoserVariable (L"PYTHONPATH", pythonPath);
 	ok = PoserVariable (L"TAPIR_TRANSLATOR_DIR", racine) && ok;
 	return ok;

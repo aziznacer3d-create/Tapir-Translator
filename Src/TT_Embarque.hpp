@@ -1,10 +1,13 @@
 // *****************************************************************************
-// Tapir Translator - fichiers embarques dans l'add-on
+// Tapir Translator - files embedded in the add-on binary
 //
-//   Le .cpp correspondant est genere au build par Tools/Embarquer.cmake a
-//   partir de couche/sitecustomize.py et dictionnaires/_commun.json : l'add-on
-//   tient en un seul .apx, et la couche ecrite sur le disque est toujours
-//   celle de la version de l'add-on.
+//   ROLE IN THE SYSTEM
+//   The matching .cpp is generated at build time by Tools/Embarquer.cmake from
+//   couche/sitecustomize.py and dictionnaires/_commun.json, as byte arrays.
+//   This way the add-on fits in a single .apx, and the layer written to disk by
+//   TT::ExtraireCouche is always the one of this add-on version.
+//   (The much larger engine and model are not compiled in: they are appended
+//   to the .apx after linking, see TT_Charge.hpp.)
 // *****************************************************************************
 
 #ifndef TT_EMBARQUE_HPP
@@ -13,9 +16,11 @@
 namespace TT {
 namespace Embarque {
 
+// Raw bytes of couche/sitecustomize.py (the Python translation layer) and their count.
 extern const unsigned char Couche[];
 extern const unsigned long CoucheTaille;
 
+// Raw bytes of dictionnaires/_commun.json (the common multilingual dictionary) and their count.
 extern const unsigned char Commun[];
 extern const unsigned long CommunTaille;
 

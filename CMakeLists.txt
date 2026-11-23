@@ -1,9 +1,37 @@
+# *****************************************************************************
+# Tapir Translator - CMake build (Windows: Visual Studio 2022, x64)
+#
+#   Targets and build steps:
+#     1. MenusLocalises   runs GenererMenus to (re)generate
+#                         RFIX/Tapir_TranslatorMenus.grc (menus in 20 languages)
+#     2. AddOnResources   compiles the GRC resources with the DevKit's
+#                         CompileResources.py (needs Python 3)
+#     3. (custom command) Tools/Embarquer.cmake turns couche/sitecustomize.py
+#                         and dictionnaires/_commun.json into genere/TT_Embarque.cpp
+#     4. AddOn            the add-on itself, Tapir_Translator.apx (Src/*.cpp)
+#     5. TapirTranslatorMoteur  the local translation engine (Moteur/*.cpp),
+#                         optionally with the offline model (TT_MODELE_LOCAL)
+#     6. Empaqueter       POST_BUILD of AddOn: appends the engine, the licences
+#                         (and the model) to the end of the .apx
+#     7. BancTraducteur   test bench, outside ArchiCAD
+#
+#   Usage:
+#     cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+#           [-DAC_API_DEVKIT_DIR=".../API AC30"] [-DTT_MODELE_LOCAL=ON]
+#     cmake --build build --config RelWithDebInfo
+#   Automatic regeneration is disabled (CMAKE_SUPPRESS_REGENERATION): run the
+#   configure step again after editing this file.
+# *****************************************************************************
+
 cmake_minimum_required (VERSION 3.16)
 
-# Find Python 3
+# Find Python 3 (needed to run CompileResources.py)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(STATUS "Using Python: ${Python3_EXECUTABLE} (version ${Python3_VERSION})")
 
+# Compiler options of the add-on (from the ArchiCAD DevKit template): C++20,
+# warnings as errors (/W3 /WX on Windows), UTF-8 sources, wchar_t as in the
+# DevKit (/Zc:wchar_t-). The macOS branch is kept from the template.
 function (SetCompilerOptions target)
 	target_compile_features (${target} PUBLIC cxx_std_20)
 	target_compile_options (${target} PUBLIC "$<$<CONFIG:Debug>:-DDEBUG>")
@@ -30,10 +58,12 @@ function (SetCompilerOptions target)
 	endif ()
 endfunction ()
 
+# Adds one DevKit module folder (Support/Modules/<module>) to the include path.
 function (AddGSModuleIncludeFolder target folder)
 	target_include_directories (${target} PUBLIC "${folder}")
 endfunction ()
 
+# Links every library of one DevKit module (on Windows: <module>/Win/*.lib).
 function (AddGSModuleLinkLibrary target library)
 	if (WIN32)
 		file (GLOB libs "${library}/Win/*.lib")
@@ -46,6 +76,8 @@ function (AddGSModuleLinkLibrary target library)
 endfunction ()
 
 
+# Global settings: IDE folders, no automatic regeneration, three configurations,
+# VS 2022 toolset (v143) and the DLL C runtime for the add-on
 set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 
 get_filename_component (CMAKE_CURRENT_FOLDER_NAME "${CMAKE_CURRENT_LIST_DIR}" NAME)
@@ -62,12 +94,16 @@ else ()
 	endif ()
 endif ()
 
-# Points to the ArchiCAD API DevKit ("API AC29" folder shipped alongside this project)
+# Points to the ArchiCAD API DevKit ("API AC29" folder shipped alongside this project);
+# pass -DAC_API_DEVKIT_DIR=... to build for ArchiCAD 30.
+# Then the add-on name (output file name) and the language of the R<language> resource folder.
 set (AC_API_DEVKIT_DIR "${CMAKE_CURRENT_LIST_DIR}/../API AC29" CACHE PATH "API DevKit directory.")
 set (AC_ADDON_NAME "Tapir_Translator" CACHE STRING "Add-On name.")
 set (AC_ADDON_LANGUAGE "INT" CACHE STRING "Add-On language code.")
 
 message (STATUS "APIDevKit directory: ${AC_API_DEVKIT_DIR}")
+# Detect the ArchiCAD version from ACAPinc.h (ServerMainVers_NN); stop if the
+# DevKit cannot be found
 set (ACAPINC_FILE_LOCATION ${AC_API_DEVKIT_DIR}/Support/Inc/ACAPinc.h)
 if (EXISTS ${ACAPINC_FILE_LOCATION})
 	file (READ ${ACAPINC_FILE_LOCATION} ACAPIncContent)
@@ -78,6 +114,7 @@ else ()
 	message (FATAL_ERROR "Failed to detect Archicad version, please check the value of the AC_API_DEVKIT_DIR variable.")
 endif ()
 
+# Preprocessor definitions required by the DevKit headers
 if (WIN32)
 	add_definitions (-DUNICODE -D_UNICODE -D_ITERATOR_DEBUG_LEVEL=0 -DGS_WIN)
 else ()
@@ -91,6 +128,9 @@ set (AddOnSourcesFolder ./Src)
 set (AddOnResourcesFolder .)
 
 # AddOnResources
+# Step 2 of the build: compile the GRC / RC2 resources (menus, strings, icons)
+# into <name>.res, which is linked into the .apx. A stamp file tells CMake
+# when the resources are up to date.
 
 set (ResourceObjectsDir ${CMAKE_BINARY_DIR}/ResourceObjects)
 
@@ -122,8 +162,8 @@ add_custom_target (
 get_filename_component (AddOnSourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${AddOnSourcesFolder}" ABSOLUTE)
 get_filename_component (AddOnResourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${AddOnResourcesFolder}" ABSOLUTE)
 get_filename_component (APIDevKitToolsFolderAbsolute "${AC_API_DEVKIT_DIR}/Support/Tools" ABSOLUTE)
-# Le DevKit AC30 ne fournit plus Support/Tools/CompileResources.py (il est dans chaque exemple, avec une autre
-# signature) : on utilise alors la copie AC29 du projet, qui appelle le meme ResConv (memes options en AC30).
+# The AC30 DevKit no longer ships Support/Tools/CompileResources.py (it is in each example, with another
+# signature): the project's AC29 copy (Tools/) is used instead; it calls the same ResConv (same options in AC30).
 if (NOT EXISTS "${APIDevKitToolsFolderAbsolute}/CompileResources.py")
 	get_filename_component (APIDevKitToolsFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/Tools" ABSOLUTE)
 endif ()
@@ -149,6 +189,9 @@ else ()
 endif ()
 
 # AddOn
+# Step 4 of the build: the add-on DLL (Tapir_Translator.apx) from every
+# Src/*.c / *.cpp / *.h / *.hpp file plus the generated TT_Embarque.cpp
+# (.c files are compiled as C++).
 
 file (GLOB AddOnHeaderFiles
 	${AddOnSourcesFolder}/*.h
@@ -162,7 +205,8 @@ file (GLOB AllCFiles
 	${AddOnSourcesFolder}/*.c
 )
 set_source_files_properties(${AllCFiles} PROPERTIES LANGUAGE CXX)
-# Couche Python et dictionnaire commun embarques dans le .apx (Tools/Embarquer.cmake)
+# Step 3 of the build: Python layer and common dictionary embedded in the .apx as byte arrays
+# (Tools/Embarquer.cmake, run in script mode; regenerated when one of the inputs changes)
 set (EmbarqueCpp "${CMAKE_BINARY_DIR}/genere/TT_Embarque.cpp")
 set (CoucheSource "${CMAKE_CURRENT_LIST_DIR}/couche/sitecustomize.py")
 set (CommunSource "${CMAKE_CURRENT_LIST_DIR}/dictionnaires/_commun.json")
@@ -182,6 +226,7 @@ set (
 	"${EmbarqueCpp}"
 )
 source_group ("Sources" FILES ${AddOnFiles})
+# A DLL on Windows (renamed .apx below), a bundle on macOS
 if (WIN32)
 	add_library (AddOn SHARED ${AddOnFiles})
 else ()
@@ -197,17 +242,21 @@ else ()
 	set_target_properties (AddOn PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 endif ()
 
+# Windows: link the compiled resources and export the two entry points that
+# ArchiCAD looks for in an add-on (by ordinal 1 and 2)
 if (WIN32)
 	target_link_options (AddOn PUBLIC "${ResourceObjectsDir}/${AC_ADDON_NAME}.res")
 	target_link_options (AddOn PUBLIC /export:GetExportedFuncAddrs,@1 /export:SetImportedFuncAddrs,@2)
 endif ()
 
+# Include paths: add-on sources, DevKit headers, and Moteur/ (Json.hpp etc. shared with the engine)
 target_include_directories (AddOn PUBLIC
 	${AddOnSourcesFolder}
 	${AC_API_DEVKIT_DIR}/Support/Inc
 	${CMAKE_CURRENT_LIST_DIR}/Moteur
 )
 
+# DevKit static API library (+ Shell32 on Windows)
 if (WIN32)
 	target_link_libraries (AddOn
 		"${AC_API_DEVKIT_DIR}/Support/Lib/ACAP_STAT.lib"
@@ -224,6 +273,7 @@ endif ()
 SetCompilerOptions (AddOn)
 add_dependencies (AddOn AddOnResources)
 
+# Every DevKit module (GSRoot, DGLib...) on the include path and linked
 get_filename_component (APIDevKitModulesDir "${AC_API_DEVKIT_DIR}/Support/Modules" ABSOLUTE)
 
 file (GLOB GSIncludeFolders
@@ -245,6 +295,8 @@ file (GLOB GSLinkLibFolders
 foreach (linkLibFolder ${GSLinkLibFolders})
 	AddGSModuleLinkLibrary (AddOn ${linkLibFolder})
 endforeach ()
+# Force-include the DevKit's GSNew.hpp and GSMalloc.hpp in every add-on source,
+# as in the DevKit's own CMake template
 get_filename_component(new_hpp "${APIDevKitModulesDir}/GSRoot/GSNew.hpp" REALPATH)
 get_filename_component(malloc_hpp "${APIDevKitModulesDir}/GSRoot/GSMalloc.hpp" REALPATH)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -263,8 +315,9 @@ else()
     message(FATAL_ERROR "Unknown compiler ID.")
 endif()
 
-# Banc de test (hors ArchiCAD) : lance un faux script Tapir par "uv run --script", comme la palette
-# Tapir, avec l'environnement prepare par le meme code que l'add-on (Src/TT_Coeur.cpp).
+# Step 7 of the build - test bench (outside ArchiCAD): runs a fake Tapir script through
+# "uv run --script", like the Tapir palette, with the environment prepared by the same code
+# as the add-on (Src/TT_Coeur.cpp). Built with /W3 /WX.
 if (WIN32)
 	add_executable (BancTraducteur
 		Tests/BancTraducteur.cpp
@@ -278,7 +331,9 @@ if (WIN32)
 	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
 endif ()
 
-# Moteur de traduction (serveur HTTP local lance par l'add-on) : relaie vers les traducteurs en ligne
+# Step 5 of the build - translation engine (local HTTP server on 127.0.0.1:8779, started by
+# the add-on): relays to the online translators. Linked with Winsock (server) and WinHTTP
+# (client). TT_MODELE_LOCAL adds the offline M2M100 model (off by default).
 option (TT_MODELE_LOCAL "Moteur hors ligne M2M100 (CTranslate2) dans le moteur et le .apx (~500 Mo)" OFF)
 if (WIN32)
 	add_executable (TapirTranslatorMoteur
@@ -297,17 +352,21 @@ if (WIN32)
 	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
 	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32 Winhttp)
 	target_include_directories (TapirTranslatorMoteur PRIVATE Src)
-	# CRT statique : le moteur ne depend d'aucune DLL
+	# Static CRT: the engine depends on no DLL (it runs from its extraction folder)
 	set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	add_dependencies (BancTraducteur TapirTranslatorMoteur)
 
-	# Traducteur reel : CTranslate2 (MIT, compile en statique sans MKL, voir README) +
-	# SentencePiece (Apache 2.0, vcpkg x64-windows-static). CRT statique : aucune DLL a livrer.
+	# Offline translator: CTranslate2 (MIT, built statically without MKL, see README) +
+	# SentencePiece (Apache 2.0, vcpkg x64-windows-static). Static CRT: no DLL to ship.
+	# Used only if TT_MODELE_LOCAL is ON and both libraries are found; otherwise the
+	# stub TraducteurM2M100Absent.cpp is compiled instead.
 	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_externe/ct2_install" CACHE PATH "Installation de CTranslate2 (statique).")
 	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_externe/CTranslate2/build" CACHE PATH "Dossier de build de CTranslate2 (Ruy, cpu_features).")
 	set (TT_VCPKG_STATIQUE "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
 	if (TT_MODELE_LOCAL AND EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib")
 		message (STATUS "Moteur : CTranslate2 + SentencePiece (traducteur M2M100)")
+		# Third-party libraries built with CTranslate2 (Ruy, cpu_features...): Release
+		# builds only, test frameworks excluded; abseil / utf8 libraries needed by SentencePiece
 		file (GLOB_RECURSE CT2_DEPENDANCES "${TT_CT2_BUILD}/third_party/*.lib")
 		list (FILTER CT2_DEPENDANCES INCLUDE REGEX "/Release/")
 		list (FILTER CT2_DEPENDANCES EXCLUDE REGEX "googletest|gtest|gmock|cxxopts")
@@ -324,8 +383,9 @@ if (WIN32)
 	endif ()
 endif ()
 
-# Charge embarquee a la fin du .apx : moteur (et modele s'il est present dans TT_DOSSIER_MODELE).
-# L'utilisateur ne copie que le .apx ; l'add-on extrait la charge au premier demarrage.
+# Step 6 of the build - payload appended to the end of the .apx: engine (and model if it is
+# present in TT_DOSSIER_MODELE). The user copies only the .apx; the add-on extracts the payload
+# on first start.
 set (TT_DOSSIER_MODELE "${CMAKE_CURRENT_LIST_DIR}/modele" CACHE PATH "Dossier du modele de traduction a embarquer.")
 if (WIN32)
 	add_executable (Empaqueter
@@ -338,17 +398,21 @@ if (WIN32)
 	target_compile_features (Empaqueter PRIVATE cxx_std_20)
 	target_compile_options (Empaqueter PRIVATE /W3 /WX /utf-8)
 
+	# Payload folder, rebuilt from scratch after each link of the add-on
 	set (DossierCharge "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
 	set (CommandesModele "")
 	if (TT_MODELE_LOCAL AND EXISTS "${TT_DOSSIER_MODELE}")
 		message (STATUS "Modele embarque : ${TT_DOSSIER_MODELE}")
-		# licences des composants tiers du moteur hors ligne (CTranslate2, Ruy, SentencePiece, modele...)
+		# Copy the model, and the licences of the offline engine's third-party components
+		# (CTranslate2, Ruy, SentencePiece, model...)
 		set (CommandesModele
 			COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_DOSSIER_MODELE}" "${DossierCharge}/modele"
 			COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licences" "${DossierCharge}/licences")
 	else ()
 		message (STATUS "Aucun modele embarque : le .apx reste leger")
 	endif ()
+	# After the link: empty the payload folder, copy the engine and the project licence
+	# (+ model and licences), then append the folder to the .apx with Empaqueter
 	add_custom_command (TARGET AddOn POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E rm -rf "${DossierCharge}"
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}"
@@ -359,12 +423,14 @@ if (WIN32)
 		COMMAND "$<TARGET_FILE:Empaqueter>" "$<TARGET_FILE:AddOn>" "${DossierCharge}"
 		COMMENT "Embarquement du moteur de traduction dans le .apx..."
 	)
+	# The engine and the packer must exist before the add-on's POST_BUILD runs;
+	# the test bench also reads payloads and the UI texts
 	add_dependencies (AddOn TapirTranslatorMoteur Empaqueter)
 	target_sources (BancTraducteur PRIVATE Src/TT_Charge.cpp Src/TT_Textes.cpp)
 endif ()
 
-# Menus de l'add-on dans les 20 langues d'ArchiCAD : RFIX/Tapir_TranslatorMenus.grc est genere a
-# partir de Src/TT_Textes.cpp avant la compilation des ressources (reecrit seulement s'il change).
+# Step 1 of the build - the add-on's menus in the 20 ArchiCAD languages: RFIX/Tapir_TranslatorMenus.grc
+# is generated from Src/TT_Textes.cpp before the resources are compiled (rewritten only if it changes).
 if (WIN32)
 	add_executable (GenererMenus Tools/GenererMenus.cpp Src/TT_Textes.cpp Src/TT_Textes.hpp)
 	target_include_directories (GenererMenus PRIVATE Src)

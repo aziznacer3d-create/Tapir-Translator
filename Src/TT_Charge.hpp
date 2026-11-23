@@ -1,22 +1,31 @@
 // *****************************************************************************
-// Tapir Translator - charge embarquee a la fin du .apx (moteur + modele)
+// Tapir Translator - payload appended to the end of the .apx (engine + model)
 //
-//   L'utilisateur ne copie qu'un fichier : Tapir_Translator.apx. Au build,
-//   Tools/Empaqueter.cpp ajoute APRES le contenu du .apx (zone que Windows
-//   ignore au chargement d'une DLL) les fichiers d'un dossier, puis un index et
-//   un pied de 32 octets :
+//   ROLE IN THE SYSTEM
+//   The user copies a single file: Tapir_Translator.apx. At build time,
+//   Tools/Empaqueter.cpp appends, AFTER the normal content of the .apx (an area
+//   that Windows ignores when it loads a DLL), the files of a folder (the engine,
+//   the optional model, the licence texts), then an index and a 32-byte footer.
 //
-//     [ .apx ][ fichier 1 ][ fichier 2 ]...[ index UTF-8 ][ pied ]
+//   PAYLOAD FORMAT
 //
-//     index : "empreinte\t<16 hex>\n" puis "<chemin relatif>\t<debut>\t<taille>\n"
-//     pied  : "TTCHARGE" | debut de l'index (u64) | taille de l'index (u64) |
-//             debut de la charge (u64)
+//     [ .apx ][ file 1 ][ file 2 ]...[ UTF-8 index ][ footer ]
 //
-//   Au demarrage, l'add-on extrait la charge une seule fois dans
-//   <base>\<empreinte>\ (marque ".complet") : une autre version du .apx a une
-//   autre empreinte et s'extrait a cote.
+//     index : "empreinte\t<16 hex digits>\n" (the hash line), then one line per
+//             file: "<relative path>\t<start offset>\t<size>\n"
+//             (offsets are absolute positions in the .apx, sizes in bytes)
+//     footer: "TTCHARGE" (8 bytes) | index start (u64) | index size (u64) |
+//             payload start (u64)        - all u64 are little-endian
 //
-//   Sans ArchiCAD (Win32) : partage par l'add-on, l'outil Empaqueter et le banc.
+//     The hash is a 64-bit FNV-1a over every relative path and file content.
+//
+//   EXTRACTION
+//   At start-up the add-on extracts the payload only once, into
+//   <base>\<hash>\ (completion marker file ".complet"): another version of the
+//   .apx has another hash and is extracted next to it.
+//
+//   No ArchiCAD dependency (Win32 only): shared by the add-on, the Empaqueter
+//   tool and the test bench.
 // *****************************************************************************
 
 #ifndef TT_CHARGE_HPP
@@ -27,16 +36,22 @@
 
 namespace TT {
 
-// Ajoute tous les fichiers de 'dossier' (sous-dossiers compris) a la fin de 'cible'.
-// Une charge deja presente est d'abord retiree.
+// Build-time packing: appends every file of 'dossier' (sub-folders included) to the end of
+// 'cible', followed by the index and the footer. A payload already present is removed first,
+// so the tool can run again on the same file.
+//   empreinte: receives the hash of the payload (16 hex digits)
+//   journal:   receives one line per file and a summary (or the error)
 bool Empaqueter (const std::wstring& cible, const std::wstring& dossier, std::wstring& empreinte,
 				 std::vector<std::wstring>& journal);
 
-// Rend true et l'empreinte si 'fichier' porte une charge
+// Returns true if 'fichier' carries a valid payload; 'empreinte' then receives its hash and
+// 'chemins' the relative paths of the embedded files (nothing is extracted).
 bool LireCharge (const std::wstring& fichier, std::wstring& empreinte, std::vector<std::wstring>& chemins);
 
-// Extrait la charge de 'fichier' dans <base>\<empreinte>\ si ce n'est pas deja fait.
-// 'destination' recoit le dossier extrait.
+// Extracts the payload of 'fichier' into <base>\<hash>\ unless that is already done.
+//   destination: receives the extracted folder (also when it already existed)
+//   journal:     receives what happened (already extracted, extracted, or the error)
+// Returns true when the folder is complete and usable.
 bool ExtraireCharge (const std::wstring& fichier, const std::wstring& base, std::wstring& destination,
 					 std::vector<std::wstring>& journal);
 

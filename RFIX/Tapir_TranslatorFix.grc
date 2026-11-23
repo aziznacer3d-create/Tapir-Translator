@@ -1,13 +1,18 @@
 ﻿/* *****************************************************************************
-// Ressources non localisées de l'add-on "Tapir Translator"
+// Non-localised resources of the "Tapir Translator" add-on
 //
-//   Traduit en direct l'interface (tkinter) des scripts Python lancés par la
-//   palette Tapir, sans modifier les scripts : voir README.md.
+//   ROLE IN THE SYSTEM
+//   The add-on translates, live, the (tkinter) interface of the Python scripts
+//   launched by the Tapir palette, without modifying the scripts: see README.md.
+//   This file holds the resources that do not depend on the interface language:
+//     - MDID: the add-on identifier (developer ID + local ID) required by ArchiCAD;
+//     - STR# 32000: name and description shown in the Add-On Manager
+//       (read by CheckEnvironment in Src/AddOnMain.cpp, which appends the version).
 //
-//   Les menus (20 langues) sont dans Tapir_TranslatorMenus.grc, genere au build
-//   par Tools/GenererMenus.cpp a partir de Src/TT_Textes.cpp :
-//     BaseMenus (langue) + 0 Langue d'entree, + 1 Langue de sortie, + 2 Options,
-//     + 3 Traducteur en ligne, + 4 Langue de l'outil ; aides a + 1000.
+//   The menus (20 languages) are in Tapir_TranslatorMenus.grc, generated at build
+//   time by Tools/GenererMenus.cpp from Src/TT_Textes.cpp:
+//     BaseMenus (language) + 0 input language, + 1 output language, + 2 Options,
+//     + 3 online translator, + 4 tool language; help strings at + 1000.
 // ****************************************************************************/
 
 

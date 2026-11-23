@@ -1,5 +1,8 @@
 // *****************************************************************************
-// Tapir Translator - moteur : client HTTP(S) WinHTTP (voir Http.hpp)
+// Tapir Translator - engine: HTTP(S) client based on WinHTTP (see Http.hpp)
+//
+//   Implementation of Http::Requete (one synchronous WinHTTP request with the
+//   automatic system proxy) and Http::EncoderUrl (RFC 3986 percent-encoding).
 // *****************************************************************************
 
 #include "Http.hpp"
@@ -18,6 +21,8 @@ namespace Http {
 
 namespace {
 
+// Converts a UTF-8 string to UTF-16 (WinHTTP only takes wide strings).
+// First call computes the length, second call converts.
 std::wstring Large (const std::string& s)
 {
 	if (s.empty ())
@@ -28,6 +33,11 @@ std::wstring Large (const std::string& s)
 	return r;
 }
 
+// Builds the error message for a failed WinHTTP call, from GetLastError():
+//   "<etape> : erreur WinHTTP <code>" followed, for the common codes, by a
+//   short explanation in parentheses (timeout, unknown host, refused
+//   certificate...). Must be called right after the failing call.
+//   etape : name of the step that failed
 std::string ErreurWinHttp (const char* etape)
 {
 	const DWORD code = GetLastError ();
@@ -43,6 +53,7 @@ std::string ErreurWinHttp (const char* etape)
 	return std::string (etape) + " : erreur WinHTTP " + std::to_string (code) + sens;
 }
 
+// RAII wrapper for a WinHTTP handle: closed automatically on every return path.
 struct Poignee {
 	HINTERNET h = nullptr;
 	~Poignee () { if (h != nullptr) WinHttpCloseHandle (h); }
@@ -51,9 +62,12 @@ struct Poignee {
 }	// namespace
 
 
+// Sends one HTTP(S) request and reads the whole response (see Http.hpp).
 Reponse Requete (const std::string& methode, const std::string& url, const std::vector<std::string>& entetes,
 				 const std::string& corps, int delaiMs)
 {
+	// Step 1: split the URL into host, port, path and query string
+	// (fixed-size buffers: host 256, path 4096, query 8192 characters)
 	Reponse r;
 	const std::wstring urlW = Large (url);
 	URL_COMPONENTS parties = {};
@@ -72,20 +86,24 @@ Reponse Requete (const std::string& methode, const std::string& url, const std::
 		return r;
 	}
 
+	// Step 2: WinHTTP session with the automatic system proxy (WPAD, Windows
+	// settings); WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY needs Windows 8.1 or later
 	Poignee session, connexion, demande;
-	// proxy automatique du systeme (WPAD, reglages Windows) ; Windows 8.1 et plus
 	session.h = WinHttpOpen (L"TapirTranslator/0.5", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
 							 WINHTTP_NO_PROXY_BYPASS, 0);
 	if (session.h == nullptr) {
 		r.erreur = ErreurWinHttp ("WinHttpOpen");
 		return r;
 	}
+	// Same timeout for name resolution, connection, sending and receiving
 	WinHttpSetTimeouts (session.h, delaiMs, delaiMs, delaiMs, delaiMs);
+	// Step 3: connection to the host (no network traffic yet)
 	connexion.h = WinHttpConnect (session.h, hote, parties.nPort, 0);
 	if (connexion.h == nullptr) {
 		r.erreur = ErreurWinHttp ("WinHttpConnect");
 		return r;
 	}
+	// Step 4: request object for "path?query"; TLS when the scheme is https
 	const std::wstring objet = std::wstring (chemin) + requete;
 	demande.h = WinHttpOpenRequest (connexion.h, Large (methode).c_str (), objet.c_str (), nullptr, WINHTTP_NO_REFERER,
 									WINHTTP_DEFAULT_ACCEPT_TYPES,
@@ -94,6 +112,8 @@ Reponse Requete (const std::string& methode, const std::string& url, const std::
 		r.erreur = ErreurWinHttp ("WinHttpOpenRequest");
 		return r;
 	}
+	// Step 5: headers joined with CRLF (length -1 = null-terminated string),
+	// then send the body and wait for the response headers
 	std::wstring tousEntetes;
 	for (const std::string& e : entetes)
 		tousEntetes += Large (e) + L"\r\n";
@@ -105,10 +125,13 @@ Reponse Requete (const std::string& methode, const std::string& url, const std::
 		r.erreur = ErreurWinHttp ("envoi de la requete");
 		return r;
 	}
+	// Step 6: HTTP status code, as a number
 	DWORD code = 0;
 	DWORD taille = sizeof (code);
 	WinHttpQueryHeaders (demande.h, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
 						 &code, &taille, WINHTTP_NO_HEADER_INDEX);
+	// Step 7: read the body chunk by chunk until no data is left; a read
+	// error keeps what was received so far; stop beyond 16 MB
 	for (;;) {
 		DWORD disponible = 0;
 		if (!WinHttpQueryDataAvailable (demande.h, &disponible) || disponible == 0)
@@ -127,6 +150,8 @@ Reponse Requete (const std::string& methode, const std::string& url, const std::
 }
 
 
+// Percent-encodes a URL parameter (see Http.hpp). Each byte of the UTF-8
+// text is handled separately, so a multi-byte character becomes several %XX.
 std::string EncoderUrl (const std::string& texte)
 {
 	std::string r;

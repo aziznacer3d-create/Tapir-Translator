@@ -1,9 +1,13 @@
 // *****************************************************************************
-// Tapir Translator - textes de l'interface de l'outil (voir TT_Textes.hpp)
+// Tapir Translator - texts of the tool's own interface (implementation, see TT_Textes.hpp)
 //
-//   Une ligne par texte, 20 colonnes : fr en de es pt it hu cs pl ru uk el tr nl
-//   sv no fi ja ko zh. Pas de guillemet droit (") : les menus sont generes en
-//   ressources GRC. Traductions a faire relire par des locuteurs natifs.
+//   ROLE IN THE SYSTEM
+//   The table below holds one row per TT::Texte (same order as the enum, each
+//   row preceded by a comment naming it) and 20 columns, one per interface
+//   language: fr en de es pt it hu cs pl ru uk el tr nl sv no fi ja ko zh.
+//   Placeholders such as {v} or {l} are filled in by TxtF.
+//   No straight double quote inside the texts: the menus are generated from this
+//   table into GRC resources. Translations still to be reviewed by native speakers.
 // *****************************************************************************
 
 #include "TT_Textes.hpp"
@@ -12,6 +16,7 @@ namespace TT {
 
 namespace {
 
+// kTextes[text][interface language index], UTF-8.
 const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	// M_ENTREE
 	{ "Langue d'entrée", "Input language", "Eingabesprache", "Idioma de entrada", "Idioma de entrada", "Lingua di origine",
@@ -522,9 +527,11 @@ const char* const kTextes[NombreTextes][NombreLanguesInterface] = {
 	  "ADRES ONTBREEKT", "ADRESS SAKNAS", "ADRESSE MANGLER", "OSOITE PUUTTUU", "アドレス未設定", "주소 입력 필요", "需要填写地址" },
 };
 
+// Language code of each interface index (same order as the columns above).
 const char* const kCodes[NombreLanguesInterface] = { "fr", "en", "de", "es", "pt", "it", "hu", "cs", "pl", "ru",
 													 "uk", "el", "tr", "nl", "sv", "no", "fi", "ja", "ko", "zh" };
 
+// Name of each interface language, written in that language.
 const char* const kNoms[NombreLanguesInterface] = { "Français", "English", "Deutsch", "Español", "Português", "Italiano", "Magyar",
 													"Čeština", "Polski", "Русский", "Українська", "Ελληνικά", "Türkçe", "Nederlands",
 													"Svenska", "Norsk", "Suomi", "日本語", "한국어", "中文" };
@@ -532,6 +539,7 @@ const char* const kNoms[NombreLanguesInterface] = { "Français", "English", "Deu
 }	// namespace
 
 
+// Counts the null or empty cells of the table (the test bench requires 0).
 int TextesManquants ()
 {
 	int n = 0;
@@ -545,31 +553,40 @@ int TextesManquants ()
 }
 
 
+// Language code of interface index i ("en" if out of range).
 const char* CodeInterface (int i)
 {
 	return i >= 0 && i < NombreLanguesInterface ? kCodes[i] : "en";
 }
 
 
+// Native name of interface index i ("English" if out of range).
 const char* NomInterface (int i)
 {
 	return i >= 0 && i < NombreLanguesInterface ? kNoms[i] : "English";
 }
 
 
+// Looks up one text (see TT_Textes.hpp). Never returns nullptr.
 const char* Txt (Texte t, int langue)
 {
+	// Step 1: invalid text identifier -> empty string.
 	if (t < 0 || t >= NombreTextes)
 		return "";
+	// Step 2: invalid language index -> English (index 1).
 	if (langue < 0 || langue >= NombreLanguesInterface)
 		langue = 1;
+	// Step 3: the cell, or the English cell if it is empty.
 	const char* r = kTextes[t][langue];
 	if (r == nullptr || *r == '\0')
-		r = kTextes[t][1];		// colonne manquante : anglais
+		r = kTextes[t][1];		// missing cell: English
 	return r != nullptr ? r : "";
 }
 
 
+// Looks up one text and fills its placeholders (see TT_Textes.hpp). Every occurrence of each
+// {key} is replaced; the search resumes after the inserted value, so a value that itself
+// contains the same {key} is not expanded again (no infinite loop).
 std::string TxtF (Texte t, int langue, std::initializer_list<std::pair<const char*, std::string>> valeurs)
 {
 	std::string r = Txt (t, langue);
@@ -585,6 +602,7 @@ std::string TxtF (Texte t, int langue, std::initializer_list<std::pair<const cha
 }
 
 
+// Interface index of a language code; unknown (or empty) code -> English (1).
 int IndiceInterface (const std::string& code)
 {
 	for (int i = 0; i < NombreLanguesInterface; ++i) {
@@ -595,6 +613,9 @@ int IndiceInterface (const std::string& code)
 }
 
 
+// Maps the language code of an ArchiCAD localised version to a language code of the tool.
+// Several versions share a language (GER / AUT / CHE -> de, POR / BRA -> pt, CHI / TAI -> zh,
+// INT / USA / UKI / AUS / NZE -> en). Any other version -> "en".
 std::string LangueDepuisArchicad (const std::string& version)
 {
 	static const char* const table[][2] = {
