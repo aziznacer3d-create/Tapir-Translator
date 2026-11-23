@@ -1492,6 +1492,27 @@ int main ()
 		for (size_t p = grc.find ("'STR#' "); p != std::string::npos; p = grc.find ("'STR#' ", p + 7))
 			sansIdTropGrand = sansIdTropGrand && std::atoi (grc.c_str () + p + 7) <= 32767;
 		Verifier ("aucune ressource generee au-dessus de 32767", sansIdTropGrand);
+
+		// Step 7: the generated menus must really be inside the built .apx (bug of v0.7.0 / v0.7.1:
+		// RFIX.win/Tapir_Translator.rc2 did not include them, ArchiCAD answered -7003 and showed no
+		// menu). The .apx is opened as a data file (no code runs) and every menu and help STR#
+		// resource (type "STRS" after ResConv) is looked up.
+		wchar_t exe[MAX_PATH] = {};
+		GetModuleFileNameW (nullptr, exe, MAX_PATH);
+		std::wstring apxReel = exe;
+		apxReel = apxReel.substr (0, apxReel.find_last_of (L'\\') + 1) + L"Tapir_Translator.apx";
+		HMODULE module = LoadLibraryExW (apxReel.c_str (), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+		bool ressourcesDedans = module != nullptr;
+		for (int l = 0; l < TT::NombreLanguesInterface && ressourcesDedans; ++l) {
+			for (int m = 0; m < 5 && ressourcesDedans; ++m) {
+				const int id = TT::BaseMenus (l) + m;
+				ressourcesDedans = FindResourceW (module, MAKEINTRESOURCEW (id), L"STRS") != nullptr &&
+								   FindResourceW (module, MAKEINTRESOURCEW (id + TT::DecalageAides), L"STRS") != nullptr;
+			}
+		}
+		if (module != nullptr)
+			FreeLibrary (module);
+		Verifier ("Tapir_Translator.apx contient les 200 ressources de menus et d'aides", ressourcesDedans);
 		Verifier ("menus generes : japonais present", grc.find (TT::Txt (TT::M_TRADUCTEUR, TT::IndiceInterface ("ja"))) != std::string::npos);
 	}
 

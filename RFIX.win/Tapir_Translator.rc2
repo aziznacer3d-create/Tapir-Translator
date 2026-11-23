@@ -2,6 +2,11 @@
 // Resource description for the Tapir Translator Add-On (Windows)
 // ****************************************************************************/
 
+// Every .grc of RFIX is compiled by the DevKit into ResourceObjects/<name>.grc.rc2, but only the
+// files included here end up in the .apx: each new .grc needs its own #include line.
+// (v0.7.0 / v0.7.1 forgot the menus file: ACAPI_MenuItem_RegisterMenu then failed with -7003 and
+// the "Tapir Translator" menu was missing. The test bench now checks the menus inside the .apx.)
 #include "Tapir_TranslatorFix.grc.rc2"
+#include "Tapir_TranslatorMenus.grc.rc2"
 
 1	ICON    LOADONCALL MOVEABLE IMPURE  ACAP.ico
