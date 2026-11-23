@@ -13,15 +13,20 @@
 
 namespace TT {
 
-const char* const VersionAddOn = "0.1.0";
+const char* const VersionAddOn = "0.2.0";
 
+// Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
+// colonnes de dictionnaires/_commun.json
 const Langue Langues[] = {
-	{ "",	"Langue d'origine" },
-	{ "fr",	"Francais" },
+	{ "",	"aucune" },
+	{ "fr",	"Français" },
 	{ "en",	"English" },
 	{ "de",	"Deutsch" },
-	{ "es",	"Espanol" },
+	{ "es",	"Español" },
+	{ "pt",	"Português" },
 	{ "it",	"Italiano" },
+	{ "hu",	"Magyar" },
+	{ "ar",	"العربية" },
 };
 const int NombreLangues = static_cast<int> (sizeof (Langues) / sizeof (Langues[0]));
 
@@ -339,16 +344,18 @@ Reglages LireReglages (const std::wstring& racine)
 	std::string json;
 	if (!LireFichier (Joindre (racine, L"reglages.json"), json))
 		return r;
-	size_t pos = ApresCle (json, "langue");
-	if (pos != std::string::npos && pos < json.size () && json[pos] == '"') {
-		const size_t fin = json.find ('"', pos + 1);
-		if (fin != std::string::npos) {
-			const std::string code = json.substr (pos + 1, fin - pos - 1);
-			if (LangueConnue (code))
-				r.langue = code;
+	for (int i = 0; i < 2; ++i) {
+		const size_t pos = ApresCle (json, i == 0 ? "langue" : "entree");
+		if (pos != std::string::npos && pos < json.size () && json[pos] == '"') {
+			const size_t fin = json.find ('"', pos + 1);
+			if (fin != std::string::npos) {
+				const std::string code = json.substr (pos + 1, fin - pos - 1);
+				if (LangueConnue (code))
+					(i == 0 ? r.langue : r.entree) = code;
+			}
 		}
 	}
-	pos = ApresCle (json, "collecte");
+	const size_t pos = ApresCle (json, "collecte");
 	if (pos != std::string::npos)
 		r.collecte = json.compare (pos, 4, "true") == 0;
 	return r;
@@ -357,12 +364,13 @@ Reglages LireReglages (const std::wstring& racine)
 
 bool EcrireReglages (const std::wstring& racine, const Reglages& reglages, std::wstring& erreur)
 {
-	if (!LangueConnue (reglages.langue)) {
-		erreur = L"langue inconnue : " + DepuisUtf8 (reglages.langue);
+	if (!LangueConnue (reglages.langue) || !LangueConnue (reglages.entree)) {
+		erreur = L"langue inconnue : " + DepuisUtf8 (reglages.entree) + L" -> " + DepuisUtf8 (reglages.langue);
 		return false;
 	}
 	CreerDossier (racine);
 	std::string json = "{\n";
+	json += "  \"entree\": \"" + reglages.entree + "\",\n";
 	json += "  \"langue\": \"" + reglages.langue + "\",\n";
 	json += std::string ("  \"collecte\": ") + (reglages.collecte ? "true" : "false") + ",\n";
 	json += std::string ("  \"ecrit_par\": \"Tapir Translator ") + VersionAddOn + "\"\n";

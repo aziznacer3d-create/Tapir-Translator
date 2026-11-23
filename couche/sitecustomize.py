@@ -34,7 +34,7 @@ Toute erreur interne est ecrite dans journal.txt et n'atteint jamais le script.
 import os
 import sys
 
-VERSION_COUCHE = "0.1.0"
+VERSION_COUCHE = "0.2.0"
 _PERIODE_MS = 600            # relecture des reglages / dictionnaires
 _TAILLE_JOURNAL = 512 * 1024  # au-dela, le journal repart a zero
 
@@ -87,6 +87,7 @@ class _Moteur:
         self.collecte = False
         self.langue_source = ""
         self.table = {}           # texte d'origine -> traduction (langue courante)
+        self.table_min = {}       # meme table, cles sans casse
         self.modeles = []         # (regex, gabarit) pour les textes a variables
         self.manquants = {}       # langue -> {texte: ""}
         self.manquants_modifies = False
@@ -150,19 +151,29 @@ class _Moteur:
             langue = ""
         self.collecte = bool(reglages.get("collecte", False))
 
+        commun = self._lire_json(commun_f)
+        outil = self._lire_json(outil_f)
+        commun = commun if isinstance(commun, dict) else {}
+        outil = outil if isinstance(outil, dict) else {}
+        # seule la langue declaree par le dictionnaire du script compte : le dictionnaire
+        # commun sert des scripts ecrits dans n'importe quelle langue
+        # langue d'entree choisie dans le menu ; sinon celle du dictionnaire du script ;
+        # sinon detection automatique
+        entree = str(reglages.get("entree", "") or "")
+        source = entree or str(outil.get("langue_source", "") or "")
+        self.entree = entree
+
+        # du moins prioritaire au plus prioritaire : termes communs, traductions
+        # communes, termes du script, traductions du script
         table = {}
-        source = ""
-        for chemin in (commun_f, outil_f):
-            d = self._lire_json(chemin)
-            if not isinstance(d, dict):
-                continue
-            if d.get("langue_source"):
-                source = str(d["langue_source"])
-            trad = d.get("traductions", {})
-            if isinstance(trad, dict) and isinstance(trad.get(langue), dict):
-                for k, v in trad[langue].items():
-                    if isinstance(k, str) and isinstance(v, str) and v != "":
-                        table[k] = v
+        if langue:
+            for d in (commun, outil):
+                table.update(self._depuis_termes(d.get("termes"), langue, source, bool(entree)))
+                trad = d.get("traductions", {})
+                if isinstance(trad, dict) and isinstance(trad.get(langue), dict):
+                    for k, v in trad[langue].items():
+                        if isinstance(k, str) and isinstance(v, str) and v != "":
+                            table[k] = v
         self.langue_source = source
         if langue and source and langue == source:
             langue = ""          # la langue demandee est celle du script
@@ -171,9 +182,67 @@ class _Moteur:
                      (self._nom_outil(), langue or "origine", source or "?", self.collecte))
         self.langue = langue
         self.table = table if langue else {}
+        # repli sans tenir compte de la casse ("FERMER", "fermer" -> "CLOSE", "close")
+        self.table_min = {}
+        for k, v in self.table.items():
+            if len(k) >= 2 and "{" not in k:
+                self.table_min.setdefault(k.casefold(), v)
         self.modeles = self._compiler_modeles(self.table)
         self.cache = {}
         return True
+
+    @staticmethod
+    def _depuis_termes(termes, langue, source, seule=False):
+        """Format multilingue : "termes": [{"en": "Close", "fr": "Fermer", ...}, ...].
+        seule=True (langue d'entree choisie) : seule la colonne source est lue.
+        Sinon chaque texte de chaque langue donne la traduction dans la langue cible,
+        quelle que soit la langue du script ; en cas de doublon (meme texte dans deux
+        notions), la langue declaree du script passe d'abord, puis l'ordre des colonnes."""
+        res = {}
+        if not isinstance(termes, list):
+            return res
+        langues = []
+        if source:
+            langues.append(source)
+        if not seule:
+            for t in termes:
+                if isinstance(t, dict):
+                    for code in t:
+                        if code not in langues and not code.startswith("_"):
+                            langues.append(code)
+        # detection automatique : un texte deja valable dans la langue cible n'est pas
+        # traduit (un script ecrit en anglais garde "Surface", meme si "Surface" (fr)
+        # veut dire "Area"). Avec une langue d'entree choisie, on sait ce qu'est le texte.
+        deja = set()
+        if not seule:
+            for t in termes:
+                if isinstance(t, dict) and isinstance(t.get(langue), str):
+                    deja.add(t[langue])
+        for code in langues:
+            if code == langue:
+                continue
+            for t in termes:
+                if not isinstance(t, dict):
+                    continue
+                cible = t.get(langue)
+                texte = t.get(code)
+                if (isinstance(cible, str) and cible and isinstance(texte, str) and texte
+                        and texte != cible and texte not in deja):
+                    res.setdefault(texte, cible)
+        return res
+
+    def _casse(self, texte):
+        t = self.table_min.get(texte.casefold())
+        if t is None:
+            return None
+        if texte.isupper():
+            return t.upper()
+        # (l'allemand garde la majuscule de ses noms)
+        if texte[:1].islower() and t[:1].isupper() and self.langue != "de":
+            return t[:1].lower() + t[1:]
+        if texte[:1].isupper() and t[:1].islower():
+            return t[:1].upper() + t[1:]
+        return t
 
     @staticmethod
     def _compiler_modeles(table):
@@ -227,8 +296,14 @@ class _Moteur:
             t = self.table.get(coeur)
             if t is None:
                 t = self._modele(coeur)
+            if t is None:
+                t = self._casse(coeur)
             if t is not None:
-                if self.langue != "fr":
+                if self.langue == "fr":
+                    # typographie francaise : espace avant : ? ! ;
+                    if apres[:1] in (":", "?", "!", ";"):
+                        apres = " " + apres
+                else:
                     apres = apres.replace(" ", " ")
                     for p in (" :", " ?", " !", " ;"):
                         if apres.startswith(p):
@@ -236,6 +311,9 @@ class _Moteur:
                             break
                 return avant + t + apres
         t = self._modele(texte)
+        if t is not None:
+            return t
+        t = self._casse(texte)
         if t is not None:
             return t
         if lignes and "\n" in texte:

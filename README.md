@@ -43,8 +43,31 @@ Combobox (`values`).
 
 Ils sont dans `%APPDATA%\Tapir Translator\dictionnaires\` :
 
-- `_commun.json` : les mots courants, écrit une seule fois par l'add-on (vos modifications sont gardées) ;
+- `_commun.json` : environ 380 notions (interface courante + vocabulaire Archicad) en fr, en, de, es,
+  pt, it, hu et ar. Il est écrit une seule fois par l'add-on : vos modifications sont gardées. Traductions
+  à faire relire par des locuteurs natifs, en particulier le hongrois et l'arabe ;
 - `<script>.json` : le nom du `.py` lancé par Tapir, sans `.py`. Il l'emporte sur `_commun.json`.
+
+**Format multilingue** (celui de `_commun.json`) : une notion par ligne, une colonne par langue. Il
+traduit d'une langue d'entrée quelconque vers une langue de sortie quelconque.
+
+```json
+{
+  "format": 2,
+  "termes": [
+    {"en": "Close", "fr": "Fermer", "de": "Schließen", "es": "Cerrar", "pt": "Fechar", "it": "Chiudi", "hu": "Bezárás", "ar": "إغلاق"},
+    {"en": "{n} walls", "fr": "{n} murs", "de": "{n} Wände"}
+  ]
+}
+```
+
+Le comportement dépend de la langue d'entrée :
+
+- **choisie** : seule cette colonne est lue ;
+- **détection automatique** : toutes les colonnes sont lues, et un texte déjà valable dans la langue de
+  sortie reste tel quel. Par exemple, un script écrit en anglais garde « Surface » en anglais.
+
+**Format par script** (une langue source, une table par langue cible) :
 
 ```json
 {
@@ -59,8 +82,11 @@ Ils sont dans `%APPDATA%\Tapir Translator\dictionnaires\` :
 - `{nom}` marque une partie variable (même nom dans la traduction).
 - Les espaces et la ponctuation de fin se raccordent tout seuls : `"Nom"` traduit aussi `"Nom :"` en
   `"Name:"`, et `"Ouvrir"` traduit aussi `"Ouvrir..."`.
+- Le français reçoit son espace avant `:` `?` `!` `;` (`"Name:"` donne `"Nom :"`).
+- La casse est tolérée : `"FERMER"` donne `"CLOSE"`.
 - Un texte sur plusieurs lignes se traduit ligne par ligne s'il n'a pas d'entrée complète.
-- Si la langue choisie est la `langue_source`, rien n'est traduit.
+- Si la langue d'entrée (choisie, ou à défaut la `langue_source` du script) est la langue de sortie,
+  rien n'est traduit.
 
 **Collecte** : avec *Collecter les textes non traduits* coché, chaque texte affiché sans traduction est
 noté dans `manquants\<script>.json`, au même format. Il suffit de le compléter et de le copier dans
@@ -70,7 +96,8 @@ noté dans `manquants\<script>.json`, au même format. Il suffit de le compléte
 
 | Commande | Effet |
 |---|---|
-| Langue d'origine / Français / English / Deutsch / Español / Italiano | écrit `reglages.json`, en direct |
+| Langue d'entrée > Détection automatique / Français / English / Deutsch / Español / Português / Italiano / Magyar / العربية | langue dans laquelle les scripts sont écrits |
+| Langue de sortie > Aucune traduction / mêmes langues | langue affichée, en direct (fenêtres ouvertes comprises) |
 | Collecter les textes non traduits | coché = notation dans `manquants\` |
 | Ouvrir le dossier des dictionnaires | ouvre `%APPDATA%\Tapir Translator` |
 | État de Tapir Translator | Rapport de session : dossiers, PYTHONPATH, langue, dictionnaires, textes manquants, fin du journal de la couche |
@@ -108,7 +135,9 @@ affiché par Tk et le texte vu par le script. `uv` doit être dans le `PATH`.
 
 ## État (23/11/2026)
 
-- v0.1.0 : couche tkinter, menu, collecte, banc **123 / 123**. Compile en AC29 et AC30.
+- v0.1.0 : couche tkinter, menu, collecte, banc 123 / 123.
+- v0.2.0 : langue d'entrée + langue de sortie, dictionnaire commun multilingue (8 langues, ~380 notions),
+  repli sans casse, typographie française, banc **218 / 218**. Compile en AC29 et AC30.
   **Jamais testé dans ArchiCAD.**
 - Pas encore traduits : les interfaces HTML servies par un script (serveur local), les boutons des boîtes
   de message (Windows les affiche dans sa propre langue) et les fenêtres « Script UI » de Tapir.

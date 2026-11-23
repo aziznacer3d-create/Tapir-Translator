@@ -3,7 +3,12 @@
 //
 //   Traduit en direct l'interface (tkinter) des scripts Python lancés par la
 //   palette Tapir, sans modifier les scripts : voir README.md.
-//   Les index du menu sont repris dans Src/TT_Menu.hpp : les garder alignés.
+//
+//   Menu principal "Tapir Translator" fait de trois menus enregistrés :
+//     32500 sous-menu "Langue d'entrée"   (1 = détection automatique, 2.. = TT::Langues[1..])
+//     32501 sous-menu "Langue de sortie"  (1 = aucune traduction,     2.. = TT::Langues[1..])
+//     32502 commandes
+//   L'ordre des langues est celui de TT::Langues (Src/TT_Coeur.cpp) : les garder alignés.
 // ****************************************************************************/
 
 
@@ -19,32 +24,76 @@
 }
 
 
-'STR#' 32500 "Strings for the Menu" {
+'STR#' 32500 "Menu : langue d'entree" {
 /* [   ] */		"Tapir Translator"
-/* [  1] */			"Langue d'origine (aucune traduction)"
+/* [   ] */		"Langue d'entrée"
+/* [  1] */			"Détection automatique"
 /* [  2] */			"Français"
 /* [  3] */			"English"
 /* [  4] */			"Deutsch"
 /* [  5] */			"Español"
-/* [  6] */			"Italiano"
-/* [  7] */			"-"
-/* [  8] */			"Collecter les textes non traduits"
-/* [  9] */			"-"
-/* [ 10] */			"Ouvrir le dossier des dictionnaires"
-/* [ 11] */			"État de Tapir Translator (Rapport de session)"
+/* [  6] */			"Português"
+/* [  7] */			"Italiano"
+/* [  8] */			"Magyar"
+/* [  9] */			"العربية"
 }
 
-'STR#' 32600 "Prompt Strings for the Menu" {
+'STR#' 32600 "Aide : langue d'entree" {
 /* [   ] */		""
-/* [  1] */		"Affiche les scripts Tapir dans leur langue, sans traduction."
-/* [  2] */		"Traduit l'interface des scripts Tapir en français (en direct, y compris les fenêtres déjà ouvertes)."
-/* [  3] */		"Traduit l'interface des scripts Tapir en anglais (en direct, y compris les fenêtres déjà ouvertes)."
-/* [  4] */		"Traduit l'interface des scripts Tapir en allemand (en direct, y compris les fenêtres déjà ouvertes)."
-/* [  5] */		"Traduit l'interface des scripts Tapir en espagnol (en direct, y compris les fenêtres déjà ouvertes)."
-/* [  6] */		"Traduit l'interface des scripts Tapir en italien (en direct, y compris les fenêtres déjà ouvertes)."
-/* [  7] */		""
-/* [  8] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
-/* [  9] */		""
-/* [ 10] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
-/* [ 11] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langue, dictionnaires, fin du journal de la couche."
+/* [   ] */		""
+/* [  1] */		"Reconnaît tout seul la langue des textes du script (un texte déjà dans la langue de sortie reste tel quel)."
+/* [  2] */		"Les scripts sont écrits en français."
+/* [  3] */		"Les scripts sont écrits en anglais."
+/* [  4] */		"Les scripts sont écrits en allemand."
+/* [  5] */		"Les scripts sont écrits en espagnol."
+/* [  6] */		"Les scripts sont écrits en portugais."
+/* [  7] */		"Les scripts sont écrits en italien."
+/* [  8] */		"Les scripts sont écrits en hongrois."
+/* [  9] */		"Les scripts sont écrits en arabe."
+}
+
+
+'STR#' 32501 "Menu : langue de sortie" {
+/* [   ] */		"Tapir Translator"
+/* [   ] */		"Langue de sortie"
+/* [  1] */			"Aucune traduction"
+/* [  2] */			"Français"
+/* [  3] */			"English"
+/* [  4] */			"Deutsch"
+/* [  5] */			"Español"
+/* [  6] */			"Português"
+/* [  7] */			"Italiano"
+/* [  8] */			"Magyar"
+/* [  9] */			"العربية"
+}
+
+'STR#' 32601 "Aide : langue de sortie" {
+/* [   ] */		""
+/* [   ] */		""
+/* [  1] */		"Affiche les scripts Tapir tels qu'ils sont écrits."
+/* [  2] */		"Traduit l'interface des scripts Tapir en français, en direct (fenêtres déjà ouvertes comprises)."
+/* [  3] */		"Traduit l'interface des scripts Tapir en anglais, en direct (fenêtres déjà ouvertes comprises)."
+/* [  4] */		"Traduit l'interface des scripts Tapir en allemand, en direct (fenêtres déjà ouvertes comprises)."
+/* [  5] */		"Traduit l'interface des scripts Tapir en espagnol, en direct (fenêtres déjà ouvertes comprises)."
+/* [  6] */		"Traduit l'interface des scripts Tapir en portugais, en direct (fenêtres déjà ouvertes comprises)."
+/* [  7] */		"Traduit l'interface des scripts Tapir en italien, en direct (fenêtres déjà ouvertes comprises)."
+/* [  8] */		"Traduit l'interface des scripts Tapir en hongrois, en direct (fenêtres déjà ouvertes comprises)."
+/* [  9] */		"Traduit l'interface des scripts Tapir en arabe, en direct (fenêtres déjà ouvertes comprises)."
+}
+
+
+'STR#' 32502 "Menu : commandes" {
+/* [   ] */		"Tapir Translator"
+/* [  1] */			"Collecter les textes non traduits"
+/* [  2] */			"-"
+/* [  3] */			"Ouvrir le dossier des dictionnaires"
+/* [  4] */			"État de Tapir Translator (Rapport de session)"
+}
+
+'STR#' 32602 "Aide : commandes" {
+/* [   ] */		""
+/* [  1] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
+/* [  2] */		""
+/* [  3] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
+/* [  4] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langues, dictionnaires, fin du journal de la couche."
 }

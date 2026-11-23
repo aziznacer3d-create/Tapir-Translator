@@ -26,18 +26,26 @@ import tkinter as tk
 from tkinter import ttk
 
 ECHANGE = os.environ.get("BANC_ECHANGE", ".")
+# BANC_UI=en : la meme interface ecrite en anglais (script dont la langue n'est pas declaree)
+T = ({"Fermer": "Close", "Nom :": "Name:", "Murs": "Walls", "Prêt": "Ready", "Terminé": "Done",
+      "Quitter": "Quit", "Fichier": "File"} if os.environ.get("BANC_UI") == "en" else {})
+
+
+def t(texte):
+    return T.get(texte, texte)
+
 
 root = tk.Tk()
 root.title("Outil de démonstration")
 
-statut = tk.StringVar(value="Prêt")
+statut = tk.StringVar(value=t("Prêt"))
 tk.Label(root, textvariable=statut).pack()
 
-btn_fermer = tk.Button(root, text="Fermer")
+btn_fermer = tk.Button(root, text=t("Fermer"))
 btn_fermer.pack()
-lbl_nom = ttk.Label(root, text="Nom :")
+lbl_nom = ttk.Label(root, text=t("Nom :"))
 lbl_nom.pack()
-cb_murs = tk.Checkbutton(root, text="Murs")
+cb_murs = tk.Checkbutton(root, text=t("Murs"))
 cb_murs.pack()
 cadre = ttk.LabelFrame(root, text="Options")
 cadre.pack()
@@ -52,8 +60,8 @@ barre = tk.Menu(root, tearoff=0)
 menu_fichier = tk.Menu(barre, tearoff=0)
 menu_fichier.add_command(label="Ouvrir...")
 menu_fichier.add_separator()
-menu_fichier.add_command(label="Quitter")
-barre.add_cascade(label="Fichier", menu=menu_fichier)
+menu_fichier.add_command(label=t("Quitter"))
+barre.add_cascade(label=t("Fichier"), menu=menu_fichier)
 root.config(menu=barre)
 
 carnet = ttk.Notebook(root)
@@ -103,7 +111,7 @@ def etat():
     e.append(("combo", " ".join(str(v) for v in combo.cget("values")), combo.get()))
     e.append(("saisie", saisie.get(), saisie.get()))
     # la logique du script compare des textes d'origine : elle doit toujours marcher
-    e.append(("logique", "ok" if btn_fermer.cget("text") == "Fermer" and statut.get() in ("Prêt", "Terminé") else "CASSEE", ""))
+    e.append(("logique", "ok" if btn_fermer.cget("text") == t("Fermer") and statut.get() in (t("Prêt"), t("Terminé")) else "CASSEE", ""))
     return e
 
 
@@ -121,7 +129,7 @@ def tic():
     if commande != derniere_commande:
         derniere_commande = commande
         if commande == "maj":
-            statut.set("Terminé")
+            statut.set(t("Terminé"))
             lbl_nom.config(text="Valeur")
         elif commande == "fin":
             root.destroy()

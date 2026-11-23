@@ -25,14 +25,13 @@
 
 namespace {
 
-constexpr short kMenuResID   = 32500;
-constexpr short kPromptResID = 32600;
-
-// Index du STR# 32500 (RFIX/Tapir_TranslatorFix.grc) : garder alignes
-constexpr Int32 kPremiereLangue	= 1;	// 1..6 = TT::Langues[0..5]
-constexpr Int32 kCollecte		= 8;
-constexpr Int32 kOuvrirDossier	= 10;
-constexpr Int32 kEtat			= 11;
+// Menus de RFIX/Tapir_TranslatorFix.grc (l'aide de chacun est a +100)
+constexpr short kMenuEntree	   = 32500;	// item i = TT::Langues[i - 1] (1 = detection automatique)
+constexpr short kMenuSortie	   = 32501;	// item i = TT::Langues[i - 1] (1 = aucune traduction)
+constexpr short kMenuCommandes = 32502;
+constexpr Int32 kCollecte	   = 1;
+constexpr Int32 kOuvrirDossier = 3;
+constexpr Int32 kEtat		   = 4;
 
 std::wstring g_racine;
 TT::Reglages g_reglages;
@@ -55,19 +54,26 @@ void Rapport (const GS::UniString& ligne)
 	ACAPI_WriteReport ("%T", false, texte.ToPrintf ());
 }
 
-GS::UniString NomLangue (const std::string& code)
+GS::UniString NomLangue (const std::string& code, const char* siVide)
 {
-	for (int i = 0; i < TT::NombreLangues; ++i) {
+	if (code.empty ())
+		return GS::UniString (siVide);
+	for (int i = 1; i < TT::NombreLangues; ++i) {
 		if (code == TT::Langues[i].code)
-			return i == 0 ? GS::UniString ("langue d'origine (aucune traduction)") : Uni (std::string (TT::Langues[i].nom)) + " (" + Uni (code) + ")";
+			return Uni (std::string (TT::Langues[i].nom)) + " (" + Uni (code) + ")";
 	}
 	return Uni (code);
 }
 
-void Cocher (Int32 index, bool coche)
+GS::UniString Langues ()
+{
+	return NomLangue (g_reglages.entree, "detection automatique") + " -> " + NomLangue (g_reglages.langue, "aucune traduction");
+}
+
+void Cocher (short menu, Int32 index, bool coche)
 {
 	API_MenuItemRef ref = {};
-	ref.menuResID = kMenuResID;
+	ref.menuResID = menu;
 	ref.itemIndex = index;
 	GSFlags flags = 0;
 	ACAPI_MenuItem_GetMenuItemFlags (&ref, &flags);
@@ -80,16 +86,20 @@ void Cocher (Int32 index, bool coche)
 
 void RafraichirCoches ()
 {
-	for (int i = 0; i < TT::NombreLangues; ++i)
-		Cocher (kPremiereLangue + i, g_reglages.langue == TT::Langues[i].code);
-	Cocher (kCollecte, g_reglages.collecte);
+	for (int i = 0; i < TT::NombreLangues; ++i) {
+		Cocher (kMenuEntree, i + 1, g_reglages.entree == TT::Langues[i].code);
+		Cocher (kMenuSortie, i + 1, g_reglages.langue == TT::Langues[i].code);
+	}
+	Cocher (kMenuCommandes, kCollecte, g_reglages.collecte);
 }
 
 void Enregistrer ()
 {
 	std::wstring erreur;
+	if (g_reglages.entree == g_reglages.langue && !g_reglages.langue.empty ())
+		Rapport ("langue d'entree = langue de sortie : rien ne sera traduit.");
 	if (TT::EcrireReglages (g_racine, g_reglages, erreur))
-		Rapport (GS::UniString ("langue = ") + NomLangue (g_reglages.langue) + ", collecte des textes non traduits = " +
+		Rapport (GS::UniString ("langues = ") + Langues () + ", collecte des textes non traduits = " +
 				 (g_reglages.collecte ? "oui" : "non") + " (reglages.json ecrit ; les scripts ouverts suivent en moins d'une seconde)");
 	else
 		Rapport (GS::UniString ("ERREUR ecriture reglages.json : ") + Uni (erreur));
@@ -115,7 +125,7 @@ void Demarrer ()
 	g_reglages = TT::LireReglages (g_racine);
 	g_pret = couche && env;
 	Rapport (GS::UniString ("version ") + TT::VersionAddOn + (g_pret ? ", active" : ", INACTIVE (voir les erreurs ci-dessus)") +
-			 ", langue = " + NomLangue (g_reglages.langue));
+			 ", langues = " + Langues ());
 }
 
 void Etat ()
@@ -124,7 +134,7 @@ void Etat ()
 	Rapport (GS::UniString ("dossier = ") + Uni (g_racine) + (g_pret ? "" : "  (couche NON installee)"));
 	Rapport (GS::UniString ("PYTHONPATH actuel = ") + Uni (TT::LireVariable (L"PYTHONPATH")));
 	Rapport (GS::UniString ("TAPIR_TRANSLATOR_DIR = ") + Uni (TT::LireVariable (L"TAPIR_TRANSLATOR_DIR")));
-	Rapport (GS::UniString ("langue = ") + NomLangue (g_reglages.langue) + ", collecte = " + (g_reglages.collecte ? "oui" : "non"));
+	Rapport (GS::UniString ("langues = ") + Langues () + ", collecte = " + (g_reglages.collecte ? "oui" : "non"));
 	Rapport (GS::UniString ("couche presente = ") +
 			 (TT::FichierExiste (TT::Joindre (TT::Joindre (g_racine, L"couche"), L"sitecustomize.py")) ? "oui" : "NON"));
 
@@ -161,19 +171,24 @@ void OuvrirDossier ()
 
 GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 {
-	if (menuParams->menuItemRef.menuResID != kMenuResID)
-		return NoError;
+	const short menu = menuParams->menuItemRef.menuResID;
 	const Int32 index = menuParams->menuItemRef.itemIndex;
-	if (index >= kPremiereLangue && index < kPremiereLangue + TT::NombreLangues) {
-		g_reglages.langue = TT::Langues[index - kPremiereLangue].code;
+	const bool langue = index >= 1 && index <= TT::NombreLangues;
+	if (menu == kMenuEntree && langue) {
+		g_reglages.entree = TT::Langues[index - 1].code;
 		Enregistrer ();
-	} else if (index == kCollecte) {
-		g_reglages.collecte = !g_reglages.collecte;
+	} else if (menu == kMenuSortie && langue) {
+		g_reglages.langue = TT::Langues[index - 1].code;
 		Enregistrer ();
-	} else if (index == kOuvrirDossier) {
-		OuvrirDossier ();
-	} else if (index == kEtat) {
-		Etat ();
+	} else if (menu == kMenuCommandes) {
+		if (index == kCollecte) {
+			g_reglages.collecte = !g_reglages.collecte;
+			Enregistrer ();
+		} else if (index == kOuvrirDossier) {
+			OuvrirDossier ();
+		} else if (index == kEtat) {
+			Etat ();
+		}
 	}
 	return NoError;
 }
@@ -197,15 +212,26 @@ API_AddonType CheckEnvironment (API_EnvirParams* envir)
 
 GSErrCode RegisterInterface (void)
 {
-	return ACAPI_MenuItem_RegisterMenu (kMenuResID, kPromptResID, MenuCode_UserDef, MenuFlag_Default);
+	// Trois menus sous le meme titre "Tapir Translator" : ArchiCAD les reunit en un menu principal
+	GSErrCode err = NoError;
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuEntree, kMenuEntree + 100, MenuCode_UserDef, MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuSortie, kMenuSortie + 100, MenuCode_UserDef, MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuCommandes, kMenuCommandes + 100, MenuCode_UserDef, MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
+	return err;
 }
 
 
 GSErrCode Initialize (void)
 {
-	const GSErrCode err = ACAPI_MenuItem_InstallMenuHandler (kMenuResID, MenuCommandHandler);
-	if (err != NoError)
-		Rapport (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler = ") + GS::ValueToUniString (static_cast<Int32> (err)));
+	GSErrCode err = NoError;
+	for (const short menu : { kMenuEntree, kMenuSortie, kMenuCommandes }) {
+		const GSErrCode e = ACAPI_MenuItem_InstallMenuHandler (menu, MenuCommandHandler);
+		if (e != NoError) {
+			Rapport (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
+					 ") = " + GS::ValueToUniString (static_cast<Int32> (e)));
+			err = e;
+		}
+	}
 	Demarrer ();
 	RafraichirCoches ();
 	ACAPI_KeepInMemory (true);

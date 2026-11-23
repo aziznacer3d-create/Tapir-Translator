@@ -28,7 +28,8 @@ extern const Langue Langues[];
 extern const int NombreLangues;
 
 struct Reglages {
-	std::string langue;		// code de Langues[], "" = aucune traduction
+	std::string entree;		// langue des scripts, code de Langues[], "" = detection automatique
+	std::string langue;		// langue de sortie, code de Langues[], "" = aucune traduction
 	bool collecte = false;	// noter les textes sans traduction
 };
 

@@ -276,13 +276,16 @@ std::function<bool (const std::map<std::string, Valeur>&)> Affiche (const std::s
 	};
 }
 
-void Langue (const std::wstring& racine, const char* code, bool collecte)
+void Langue (const std::wstring& racine, const char* code, bool collecte, const char* entree = "")
 {
 	TT::Reglages r;
+	r.entree = entree;
 	r.langue = code;
 	r.collecte = collecte;
 	std::wstring erreur;
-	Verifier (std::string ("EcrireReglages langue=\"") + code + "\"", TT::EcrireReglages (racine, r, erreur), TT::Utf8 (erreur));
+	Verifier (std::string ("EcrireReglages entree=\"") + entree + "\" sortie=\"" + code + "\"", TT::EcrireReglages (racine, r, erreur), TT::Utf8 (erreur));
+	const TT::Reglages relu = TT::LireReglages (racine);
+	Verifier ("LireReglages relit entree et sortie", relu.entree == r.entree && relu.langue == r.langue && relu.collecte == r.collecte);
 }
 
 void MontrerSortie (Outil& o)
@@ -403,7 +406,7 @@ int main ()
 		Texte (o, "modele", "3 Wände erstellt", "3 murs créés");
 		Texte (o, "murs", "Wände", "Murs");
 		Texte (o, "statut", "Fertig", "Terminé");
-		Texte (o, "nom", "Valeur", "Valeur");				// pas de "Valeur" en allemand : texte d'origine
+		Texte (o, "nom", "Wert", "Valeur");					// dictionnaire commun multilingue
 		Texte (o, "inconnu", "Texte inconnu", "Texte inconnu");
 
 		Langue (racine, "", false);
@@ -448,6 +451,82 @@ int main ()
 		Texte (o, "logique", "ok");
 		DWORD code = 1;
 		Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+	}
+
+	// --- dictionnaire commun seul (script sans dictionnaire), toutes les langues ------------
+	std::printf ("\n[3b] Script sans dictionnaire : dictionnaire commun multilingue\n");
+	{
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_sans_dictionnaire");
+		Langue (racine, "pt", false);
+		Outil o;
+		Verifier ("lancement", o.Lancer (script, racine));
+		Verifier ("portugais", o.Attendre (Affiche ("fermer", "Fechar"), 30000));
+		Texte (o, "murs", "Paredes", "Murs");
+		Texte (o, "nom", "Nome:", "Nom :");
+		Texte (o, "statut", "Pronto", "Prêt");
+		Texte (o, "menu_fichier", "Ficheiro", "Fichier");
+		Texte (o, "titre", "Outil de démonstration");		// propre au script : pas dans le commun
+		Langue (racine, "hu", false);
+		Verifier ("hongrois", o.Attendre (Affiche ("fermer", "Bezárás"), 5000));
+		Texte (o, "murs", "Falak", "Murs");
+		Texte (o, "menu_quitter", "Kilépés", "Quitter");
+		Texte (o, "onglet", "Általános", "Général");
+		Langue (racine, "ar", false);
+		Verifier ("arabe", o.Attendre (Affiche ("fermer", "إغلاق"), 5000));
+		Texte (o, "murs", "الجدران", "Murs");
+		Texte (o, "entete", "الاسم", "Nom");
+		Langue (racine, "es", false);
+		Verifier ("espagnol", o.Attendre (Affiche ("fermer", "Cerrar"), 5000));
+		Texte (o, "murs", "Muros", "Murs");
+		Langue (racine, "it", false);
+		Verifier ("italien", o.Attendre (Affiche ("fermer", "Chiudi"), 5000));
+		Texte (o, "logique", "ok");
+		DWORD code = 1;
+		Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+	}
+
+	// --- script ecrit en anglais, sans langue declaree --------------------------------------
+	std::printf ("\n[3c] Script ecrit en anglais (langue non declaree)\n");
+	{
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_anglais");
+		SetEnvironmentVariableW (L"BANC_UI", L"en");
+		Langue (racine, "fr", false);
+		Outil o;
+		Verifier ("lancement", o.Lancer (script, racine));
+		Verifier ("anglais -> francais", o.Attendre (Affiche ("fermer", "Fermer"), 30000));
+		Texte (o, "fermer", "Fermer", "Close");
+		Texte (o, "nom", "Nom :", "Name:");				// typographie francaise
+		Texte (o, "murs", "Murs", "Walls");
+		Texte (o, "statut", "Prêt", "Ready");
+		Texte (o, "menu_quitter", "Quitter", "Quit");
+		Langue (racine, "en", false);
+		Verifier ("anglais -> anglais : rien ne change", o.Attendre (Affiche ("fermer", "Close"), 5000));
+		Texte (o, "murs", "Walls", "Walls");
+		Langue (racine, "de", false);
+		Verifier ("anglais -> allemand", o.Attendre (Affiche ("fermer", "Schließen"), 5000));
+		Texte (o, "nom", "Name:", "Name:");
+		Texte (o, "logique", "ok");
+
+		// langue d'entree choisie dans le menu
+		Langue (racine, "fr", false, "en");
+		Verifier ("entree anglais -> sortie francais", o.Attendre (Affiche ("fermer", "Fermer"), 5000));
+		Texte (o, "murs", "Murs", "Walls");
+		Texte (o, "statut", "Prêt", "Ready");
+		Langue (racine, "hu", false, "en");
+		Verifier ("entree anglais -> sortie hongrois", o.Attendre (Affiche ("fermer", "Bezárás"), 5000));
+		Texte (o, "murs", "Falak", "Walls");
+		Langue (racine, "fr", false, "de");
+		Verifier ("entree allemand sur un script anglais : rien a traduire", o.Attendre (Affiche ("fermer", "Close"), 5000));
+		Texte (o, "murs", "Walls", "Walls");
+		Langue (racine, "en", false, "en");
+		Sleep (1500);
+		Texte (o, "fermer", "Close", "Close");				// entree = sortie
+		Texte (o, "logique", "ok");
+		DWORD code = 1;
+		Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+		SetEnvironmentVariableW (L"BANC_UI", nullptr);
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+		Langue (racine, "en", false);
 	}
 
 	// --- hors Tapir : la couche ne doit rien faire ---------------------------------------
