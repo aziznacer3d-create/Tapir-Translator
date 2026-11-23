@@ -39,6 +39,38 @@ supprimées).
   envoyés avec l'offre API **Free** peuvent être conservés par DeepL.
 - Cache : `%APPDATA%\Tapir Translator\cache\<traducteur>\<source>-<cible>.json`, partagé par tous les
   scripts et relu même sans Internet ni moteur. Un dictionnaire l'emporte toujours sur le cache.
+- **Quota MyMemory** : quand MyMemory répond « MYMEMORY WARNING », le moteur ouvre une fenêtre qui
+  propose de saisir une adresse e-mail (quota porté d'environ 5 000 à 50 000 caractères par jour,
+  d'après la documentation MyMemory). Pas de mot de passe : un compte MyMemory n'augmente pas le quota
+  (sa clé ne sert qu'aux mémoires privées). L'adresse est écrite dans `cles.json` et sert aussitôt.
+  « Plus tard » : pas de nouvelle question pendant une heure.
+
+## Corrections de termes
+
+Les traducteurs en ligne connaissent mal le vocabulaire Archicad (« story » devient « histoire » au lieu
+de « étage »). `%APPDATA%\Tapir Translator\corrections.json` (menu **Traducteur en ligne > Corrections
+des termes...**) corrige les traductions en ligne, langue de sortie par langue de sortie :
+
+```json
+{
+  "fr": [
+    {"source": ["story", "stories"], "remplacer": {
+      "toutes les histoires": "tous les étages", "une histoire": "un étage",
+      "histoires": "étages", "histoire": "étage"}},
+    {"source": "layer", "mauvais": "couche", "correct": "calque"}
+  ]
+}
+```
+
+- `source` (facultatif) : la règle ne joue que si l'original contient l'un de ces mots.
+- `mauvais` → `correct`, ou `remplacer` pour plusieurs formes ; en fr, es et pt, le pluriel en -s d'un
+  mot seul suit tout seul ; la majuscule initiale de la traduction est gardée.
+- Les expressions les plus longues passent d'abord : y mettre les accords (« toutes les histoires » →
+  « tous les étages »).
+- Appliqué en direct (fenêtres ouvertes et cache compris), jamais aux dictionnaires. Le fichier est
+  pré-rempli avec les pièges courants en fr, de, es, it, pt (story, slab, beam, layer, pen, fill,
+  railing, curtain wall, morph, mesh, layout) et n'est jamais écrasé.
+- Pour une phrase entière, utiliser plutôt `dictionnaires\_perso.json`.
 
 ## Principe
 
@@ -180,6 +212,7 @@ Sans ces éléments, le projet compile quand même : le moteur ne connaît alors
 | Langue de sortie > Aucune traduction / 20 langues | langue affichée, en direct (fenêtres ouvertes comprises) |
 | Traducteur en ligne > DeepL / Microsoft Translator / Google Cloud Translation / MyMemory / LibreTranslate | traducteur des phrases hors dictionnaire |
 | Traducteur en ligne > Clés des traducteurs... | ouvre `cles.json` dans le Bloc-notes |
+| Traducteur en ligne > Corrections des termes... | ouvre `corrections.json` dans le Bloc-notes |
 | Options > Traduction en ligne | lance / arrête le moteur (phrases hors dictionnaire) |
 | Options > Collecter les textes non traduits | coché = notation dans `manquants\` |
 | Options > Ouvrir le dossier des dictionnaires | ouvre `%APPDATA%\Tapir Translator` |
@@ -231,6 +264,9 @@ bout. `uv` doit être dans le `PATH`.
   automatique du moteur ; anciennes extractions supprimées ; correction de `{n}` (« Only the selected
   éléments »). `.apx` de 2 Mo. Banc **324 / 324** (faux serveur aux formats des 5 services). MyMemory
   vérifié en réel ; DeepL, Microsoft, Google, LibreTranslate pas encore avec de vraies clés.
+- v0.6.0 : fenêtre « quota MyMemory » (saisie de l'e-mail, sans mot de passe) ; corrections de termes
+  `corrections.json` appliquées en direct aux traductions en ligne. Banc **349 / 349**. MyMemory testé
+  dans ArchiCAD par l'utilisateur (v0.5.0) : fonctionne.
 - Pas encore traduits : les interfaces HTML servies par un script (serveur local), les boutons des boîtes
   de message (Windows les affiche dans sa propre langue) et les fenêtres « Script UI » de Tapir.
 

@@ -52,6 +52,11 @@ constexpr int PortMoteur = 8779;
 std::wstring CheminCles (const std::wstring& racine);
 bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur);
 
+// corrections.json : termes a corriger dans les traductions en ligne ("story" -> "étage" et non
+// "histoire"). Cree pre-rempli s'il n'existe pas, jamais ecrase.
+std::wstring CheminCorrections (const std::wstring& racine);
+bool CreerModeleCorrections (const std::wstring& racine, std::wstring& erreur);
+
 // %APPDATA%\Tapir Translator (vide si APPDATA n'existe pas)
 std::wstring DossierParDefaut ();
 

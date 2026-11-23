@@ -24,6 +24,9 @@
 
 #include "Json.hpp"
 #include "Traducteur.hpp"
+#include "Dialogue.hpp"
+
+#include <atomic>
 
 #include <cstdio>
 #include <ctime>
@@ -35,7 +38,7 @@
 
 namespace {
 
-const char* const kVersion = "0.5.0";
+const char* const kVersion = "0.6.0";
 std::string g_journal;
 
 void Journal (const std::string& ligne)
@@ -124,6 +127,9 @@ struct Contexte {
 	std::unique_ptr<Traducteur> essai;	// --essai (banc)
 	std::unique_ptr<Traducteur> local;	// --modele (option de build TT_MODELE_LOCAL)
 	std::string cles;					// --cles : cles.json des traducteurs en ligne
+	bool sansDialogue = false;			// --sans-dialogue (banc) : pas de fenetre "quota MyMemory"
+	std::atomic<bool> dialogueOuvert { false };
+	std::atomic<unsigned long long> plusTardJusqua { 0 };
 };
 
 Json::Valeur LireCles (const std::string& chemin)
@@ -145,6 +151,72 @@ Json::Valeur LireCles (const std::string& chemin)
 	if (!Json::Lecteur (contenu).Lire (v))
 		Journal ("cles.json illisible (JSON invalide) : " + chemin);
 	return v;
+}
+
+// Ecrit l'adresse dans cles.json (mymemory.email), sans toucher aux autres cles
+bool EnregistrerEmail (const std::string& chemin, const std::string& email)
+{
+	if (chemin.empty ())
+		return false;
+	Json::Valeur v = LireCles (chemin);
+	if (v.genre != Json::Valeur::Objet) {
+		v = Json::Valeur ();
+		v.genre = Json::Valeur::Objet;
+	}
+	Json::Valeur& m = v.objet["mymemory"];
+	if (m.genre != Json::Valeur::Objet) {
+		m = Json::Valeur ();
+		m.genre = Json::Valeur::Objet;
+	}
+	Json::Valeur e;
+	e.genre = Json::Valeur::Chaine;
+	e.chaine = email;
+	m.objet["email"] = e;
+	std::string texte;
+	Json::Ecrire (v, texte);
+	texte += "\n";
+	const std::string tmp = chemin + ".tmp";
+	FILE* f = nullptr;
+	if (fopen_s (&f, tmp.c_str (), "wb") != 0 || f == nullptr)
+		return false;
+	const bool ecrit = std::fwrite (texte.data (), 1, texte.size (), f) == texte.size ();
+	std::fclose (f);
+	return ecrit && MoveFileExA (tmp.c_str (), chemin.c_str (), MOVEFILE_REPLACE_EXISTING);
+}
+
+// MyMemory a repondu "MYMEMORY WARNING" (quota du jour) : fenetre pour saisir un e-mail,
+// dans son propre fil (le serveur continue de repondre). Pas plus d'une fois par heure si
+// l'utilisateur repond "Plus tard".
+void SignalerQuotaMyMemory (Contexte& c)
+{
+	const unsigned long long maintenant = GetTickCount64 ();
+	if (c.dialogueOuvert || maintenant < c.plusTardJusqua)
+		return;
+	const Json::Valeur cles = LireCles (c.cles);
+	const Json::Valeur* m = cles.Champ ("mymemory");
+	std::string email = m != nullptr ? m->Texte ("email") : std::string ();
+	const bool avecEmail = !email.empty ();
+	Journal (std::string ("quota MyMemory atteint ") + (avecEmail ? "(meme avec l'e-mail : environ 50 000 caracteres/jour)"
+																   : "(anonyme : environ 5 000 caracteres/jour)"));
+	if (c.sansDialogue) {
+		Journal ("fenetre de saisie de l'e-mail desactivee (--sans-dialogue)");
+		c.plusTardJusqua = maintenant + 3600000ull;
+		return;
+	}
+	c.dialogueOuvert = true;
+	std::thread ([&c, email, avecEmail] () mutable {
+		const ReponseQuota r = DemanderEmailMyMemory (email, avecEmail);
+		if (r == ReponseQuota::Enregistree) {
+			if (EnregistrerEmail (c.cles, email))
+				Journal ("e-mail MyMemory enregistre dans cles.json : quota porte a environ 50 000 caracteres/jour");
+			else
+				Journal ("ERREUR enregistrement de l'e-mail dans " + c.cles);
+		} else {
+			c.plusTardJusqua = GetTickCount64 () + 3600000ull;
+			Journal ("fenetre du quota MyMemory fermee sans e-mail : pas de nouvelle question pendant 1 h");
+		}
+		c.dialogueOuvert = false;
+	}).detach ();
 }
 
 std::string Etat (const Contexte& c)
@@ -223,6 +295,8 @@ bool Traiter (SOCKET s, Contexte& c)
 	if (!traducteur->Traduire (source, cible, entree, sortie, erreur) || sortie.size () != entree.size ()) {
 		// 503 : la couche garde le texte d'origine et reessaiera (reseau, quota, cle...)
 		Journal ("ERREUR " + traducteur->Nom () + " " + (source.empty () ? "auto" : source) + " -> " + cible + " : " + erreur);
+		if (fournisseur == "mymemory" && (erreur.find ("MYMEMORY WARNING") != std::string::npos || erreur.find ("HTTP 429") != std::string::npos))
+			SignalerQuotaMyMemory (c);
 		Repondre (s, 503, "{\"erreur\": " + Json::Chaine (traducteur->Nom () + " : " + (erreur.empty () ? "traduction impossible" : erreur)) + "}");
 		return true;
 	}
@@ -255,6 +329,18 @@ int main (int argc, char** argv)
 			modele = argv[++i];
 		else if (a == "--cles" && i + 1 < argc)
 			contexte.cles = argv[++i];
+		else if (a == "--sans-dialogue")
+			contexte.sansDialogue = true;
+		else if (a == "--montrer-quota" && i + 1 < argc) {
+			// developpement : affiche la fenetre du quota MyMemory (0 = anonyme, 1 = avec e-mail)
+			std::string email = "moi@exemple.fr";
+			return static_cast<int> (DemanderEmailMyMemory (email, std::atoi (argv[i + 1]) != 0));
+		}
+		else if (a == "--enregistrer-email" && i + 2 < argc) {
+			// utilitaire (banc) : ecrit l'e-mail MyMemory dans cles.json et s'arrete
+			const std::string chemin = argv[i + 1];
+			return EnregistrerEmail (chemin, argv[i + 2]) ? 0 : 1;
+		}
 		else if (a == "--parent" && i + 1 < argc)
 			parent = static_cast<DWORD> (std::strtoul (argv[++i], nullptr, 10));
 		else if (a == "--journal" && i + 1 < argc)

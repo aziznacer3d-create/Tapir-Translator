@@ -494,15 +494,33 @@ private:
 			const std::string texte = Parametre (requete, "q");
 			const std::string paire = Parametre (requete, "langpair");
 			Noter (texte);
+			if (quotaAnonyme && Parametre (requete, "de").empty ())
+				return Repondre (c, 200, "{\"responseData\": {\"translatedText\": \"MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE "
+										 "TRANSLATIONS FOR TODAY. NEXT AVAILABLE IN 10 HOURS\"}, \"responseStatus\": 429, \"quotaFinished\": true}");
 			return Repondre (c, 200, "{\"responseData\": {\"translatedText\": " + Json::Chaine ("MM:" + paire.substr (paire.find ('|') + 1) + ":" + texte) +
 										 "}, \"responseStatus\": 200}");
 		}
 		if (chemin == "/translate") {							// LibreTranslate
+			// traduction mot a mot typique d'un traducteur en ligne : "story" -> "histoire"
+			const Json::Valeur* q = v.Champ ("q");
+			if (v.Texte ("target") == "fr" && q != nullptr && q->genre == Json::Valeur::Tableau) {
+				std::string r;
+				for (const Json::Valeur& e : q->tableau) {
+					Noter (e.chaine);
+					r += std::string (r.empty () ? "" : ", ") +
+						 Json::Chaine (e.chaine == "All stories" ? std::string ("Toutes les histoires") : "LT:fr:" + e.chaine);
+				}
+				return Repondre (c, 200, "{\"translatedText\": [" + r + "]}");
+			}
 			return Repondre (c, 200, "{\"translatedText\": [" + liste (v.Champ ("q"), "LT", v.Texte ("target"), nullptr) + "]}");
 		}
 		Repondre (c, 404, "{}");
 	}
 
+public:
+	std::atomic<bool> quotaAnonyme { false };	// MyMemory sans e-mail : "MYMEMORY WARNING"
+
+private:
 	SOCKET ecoute_ = INVALID_SOCKET;
 	std::thread fil_;
 	std::mutex m_;
@@ -974,6 +992,96 @@ int main ()
 		for (const wchar_t* nom : { L"DEEPL", L"MICROSOFT", L"GOOGLE", L"MYMEMORY", L"LIBRETRANSLATE" })
 			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + nom).c_str (), nullptr);
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+		Langue (racine, "en", false);
+	}
+
+	// --- corrections de termes et quota MyMemory --------------------------------------------
+	std::printf ("\n[3f] Corrections de termes (story -> étage) et quota MyMemory\n");
+	{
+		const int portServices = 8799;
+		const int port = 8795;
+		ServeurFactice faux;
+		Verifier ("faux serveur de traduction demarre", faux.Demarrer (portServices));
+		const std::wstring base = L"http://127.0.0.1:" + std::to_wstring (portServices);
+		for (const wchar_t* nom : { L"MYMEMORY", L"LIBRETRANSLATE" })
+			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + nom).c_str (), base.c_str ());
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_corrections");
+		SetEnvironmentVariableW (L"BANC_UI", L"en");
+		const std::wstring cles = TT::CheminCles (racine);
+		Ecrire (cles, "{\"_explication\": \"test\", \"deepl\": {\"cle\": \"cle-deepl:fx\"}, \"mymemory\": {\"email\": \"\"}}");
+		HANDLE moteur = LancerMoteur (port, TT::Joindre (racine, L"journal.txt"), L"--sans-dialogue --cles \"" + cles + L"\"");
+		Verifier ("moteur lance", moteur != nullptr);
+		Verifier ("corrections.json pre-rempli par l'add-on", TT::FichierExiste (TT::CheminCorrections (racine)));
+		{
+			Outil o;
+			Langue (racine, "fr", false, "en", true, "libretranslate");
+			Verifier ("lancement (script en anglais)", o.Lancer (script, racine));
+			Verifier ("\"All stories\" -> \"Toutes les histoires\" corrige en \"Tous les étages\"",
+					  o.Attendre (Affiche ("etages", "Tous les étages"), 20000), o.Lire ("etages").affiche);
+			Texte (o, "etages", "Tous les étages", "All stories");
+
+			// correction modifiee pendant que la fenetre est ouverte
+			Ecrire (TT::CheminCorrections (racine),
+					"{\"fr\": [{\"source\": \"story\", \"mauvais\": \"histoire\", \"correct\": \"niveau\"},"
+					" {\"mauvais\": \"Toutes les histoires\", \"correct\": \"Tous les niveaux\"}]}");
+			Verifier ("corrections.json modifie : applique en direct, cache compris (pluriel -s automatique)",
+					  o.Attendre (Affiche ("etages", "Tous les niveaux"), 5000), o.Lire ("etages").affiche);
+			Ecrire (TT::CheminCorrections (racine), "{\"fr\": []}");
+			Verifier ("sans correction : traduction brute du service", o.Attendre (Affiche ("etages", "Toutes les histoires"), 5000),
+					  o.Lire ("etages").affiche);
+			Verifier ("la correction ne touche pas le dictionnaire", o.Lire ("fermer").affiche == "Fermer");
+
+			// quota MyMemory anonyme atteint
+			faux.quotaAnonyme = true;
+			Langue (racine, "de", false, "en", true, "mymemory");
+			Verifier ("quota MyMemory : le texte d'origine reste (dictionnaire applique)", o.Attendre (Affiche ("fermer", "Schließen"), 10000));
+			Sleep (2500);
+			Texte (o, "inconnu", "Texte inconnu", "Texte inconnu");
+			bool quota = false;
+			for (int i = 0; i < 20 && !quota; ++i) {
+				for (const std::string& l : TT::DernieresLignes (TT::Joindre (racine, L"journal.txt"), 60))
+					quota = quota || l.find ("quota MyMemory atteint (anonyme") != std::string::npos;
+				if (!quota)
+					Sleep (200);
+			}
+			Verifier ("journal : quota MyMemory anonyme detecte (fenetre e-mail demandee)", quota);
+
+			// ce que fait le bouton "Enregistrer" de la fenetre : e-mail ecrit dans cles.json
+			wchar_t exe[MAX_PATH] = {};
+			GetModuleFileNameW (nullptr, exe, MAX_PATH);
+			std::wstring chemin = exe;
+			chemin = chemin.substr (0, chemin.find_last_of (L'\\') + 1) + L"TapirTranslatorMoteur.exe";
+			std::wstring ligne = L"\"" + chemin + L"\" --enregistrer-email \"" + cles + L"\" moi@exemple.fr";
+			std::vector<wchar_t> tampon (ligne.begin (), ligne.end ());
+			tampon.push_back (L'\0');
+			STARTUPINFOW si = {};
+			si.cb = sizeof (si);
+			PROCESS_INFORMATION pi = {};
+			DWORD code = 1;
+			if (CreateProcessW (nullptr, tampon.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+				WaitForSingleObject (pi.hProcess, 10000);
+				GetExitCodeProcess (pi.hProcess, &code);
+				CloseHandle (pi.hThread);
+				CloseHandle (pi.hProcess);
+			}
+			std::string c;
+			TT::LireFichier (cles, c);
+			Verifier ("e-mail enregistre dans cles.json", code == 0 && c.find ("\"email\": \"moi@exemple.fr\"") != std::string::npos);
+			Verifier ("les autres cles de cles.json sont gardees", c.find ("\"cle\": \"cle-deepl:fx\"") != std::string::npos &&
+																	c.find ("\"_explication\": \"test\"") != std::string::npos);
+			Verifier ("avec l'e-mail : MyMemory traduit de nouveau (< 30 s)", o.Attendre (Affiche ("inconnu", "MM:de:Texte inconnu"), 30000),
+					  o.Lire ("inconnu").affiche);
+			Texte (o, "logique", "ok");
+			DWORD fin = 1;
+			Verifier ("fermeture propre", o.Finir (fin, 10000) && fin == 0);
+		}
+		ArreterMoteur (moteur);
+		faux.Arreter ();
+		for (const wchar_t* nom : { L"MYMEMORY", L"LIBRETRANSLATE" })
+			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + nom).c_str (), nullptr);
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+		SetEnvironmentVariableW (L"BANC_UI", nullptr);
 		Langue (racine, "en", false);
 	}
 

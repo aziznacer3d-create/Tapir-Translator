@@ -28,7 +28,8 @@ from tkinter import ttk
 ECHANGE = os.environ.get("BANC_ECHANGE", ".")
 # BANC_UI=en : la meme interface ecrite en anglais (script dont la langue n'est pas declaree)
 T = ({"Fermer": "Close", "Nom :": "Name:", "Murs": "Walls", "Prêt": "Ready", "Terminé": "Done",
-      "Quitter": "Quit", "Fichier": "File"} if os.environ.get("BANC_UI") == "en" else {})
+      "Quitter": "Quit", "Fichier": "File", "Tous les étages": "All stories"}
+     if os.environ.get("BANC_UI") == "en" else {})
 
 
 def t(texte):
@@ -59,6 +60,9 @@ lbl_inconnu.pack()
 lbl_chemin = tk.Label(root, text="C:\\Projets\\plan.pln")
 lbl_chemin.pack()
 lbl_code = tk.Label(root, text="MUR-01")
+# phrase ou un terme Archicad est mal traduit par les traducteurs en ligne ("story" -> "histoire")
+lbl_etages = tk.Label(root, text=t("Tous les étages"))
+lbl_etages.pack()
 lbl_code.pack()
 
 barre = tk.Menu(root, tearoff=0)
@@ -105,7 +109,7 @@ def etat():
     e.append(("statut", r.globalgetvar(str(statut)), statut.get()))
     for cle, w in (("fermer", btn_fermer), ("nom", lbl_nom), ("murs", cb_murs), ("cadre", cadre),
                    ("multi", lbl_multi), ("modele", lbl_modele), ("inconnu", lbl_inconnu),
-                   ("chemin", lbl_chemin), ("code", lbl_code)):
+                   ("chemin", lbl_chemin), ("code", lbl_code), ("etages", lbl_etages)):
         e.append((cle, r.call(str(w), "cget", "-text"), w.cget("text")))
     e.append(("menu_fichier", r.call(str(barre), "entrycget", 0, "-label"), barre.entrycget(0, "label")))
     e.append(("menu_ouvrir", r.call(str(menu_fichier), "entrycget", 0, "-label"), menu_fichier.entrycget(0, "label")))

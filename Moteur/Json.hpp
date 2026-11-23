@@ -259,6 +259,64 @@ private:
 };
 
 
+inline std::string Chaine (const std::string& texte);
+
+// Ecrit une valeur avec indentation (les cles d'un objet sortent dans l'ordre alphabetique,
+// celles qui commencent par "_" -- les explications -- en premier)
+inline void Ecrire (const Valeur& v, std::string& sortie, int retrait = 0)
+{
+	const std::string marge (static_cast<size_t> (retrait + 2), ' ');
+	const std::string fin (static_cast<size_t> (retrait), ' ');
+	switch (v.genre) {
+		case Valeur::Nul:		sortie += "null"; break;
+		case Valeur::Booleen:	sortie += v.booleen ? "true" : "false"; break;
+		case Valeur::Nombre: {
+			char t[32];
+			std::snprintf (t, sizeof (t), "%.15g", v.nombre);
+			sortie += t;
+			break;
+		}
+		case Valeur::Chaine:	sortie += Chaine (v.chaine); break;
+		case Valeur::Tableau: {
+			if (v.tableau.empty ()) {
+				sortie += "[]";
+				break;
+			}
+			sortie += "[\n";
+			for (size_t i = 0; i < v.tableau.size (); ++i) {
+				sortie += marge;
+				Ecrire (v.tableau[i], sortie, retrait + 2);
+				sortie += i + 1 < v.tableau.size () ? ",\n" : "\n";
+			}
+			sortie += fin + "]";
+			break;
+		}
+		case Valeur::Objet: {
+			if (v.objet.empty ()) {
+				sortie += "{}";
+				break;
+			}
+			std::vector<const std::pair<const std::string, Valeur>*> champs;
+			for (const auto& c : v.objet) {
+				if (!c.first.empty () && c.first[0] == '_')
+					champs.push_back (&c);
+			}
+			for (const auto& c : v.objet) {
+				if (c.first.empty () || c.first[0] != '_')
+					champs.push_back (&c);
+			}
+			sortie += "{\n";
+			for (size_t i = 0; i < champs.size (); ++i) {
+				sortie += marge + Chaine (champs[i]->first) + ": ";
+				Ecrire (champs[i]->second, sortie, retrait + 2);
+				sortie += i + 1 < champs.size () ? ",\n" : "\n";
+			}
+			sortie += fin + "}";
+			break;
+		}
+	}
+}
+
 inline std::string Chaine (const std::string& texte)
 {
 	std::string r = "\"";

@@ -285,6 +285,8 @@ if (WIN32)
 		Moteur/MoteurMain.cpp
 		Moteur/TraducteurEssai.cpp
 		Moteur/TraducteursEnLigne.cpp
+		Moteur/Dialogue.cpp
+		Moteur/Dialogue.hpp
 		Moteur/Http.cpp
 		Moteur/Http.hpp
 		Moteur/Traducteur.hpp

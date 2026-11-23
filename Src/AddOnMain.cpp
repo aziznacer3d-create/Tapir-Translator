@@ -42,6 +42,7 @@ constexpr Int32 kOuvrirDossier = 4;
 constexpr Int32 kEtat		   = 5;
 constexpr short kMenuTraducteur = 32503;	// item i = TT::Fournisseurs[i - 1]
 constexpr Int32 kCles		   = 7;
+constexpr Int32 kCorrections   = 8;
 
 std::wstring g_racine;
 TT::Reglages g_reglages;
@@ -250,6 +251,8 @@ bool DemarrerProcessus (DWORD& erreur)
 		return false;
 	}
 	CloseHandle (pi.hThread);
+	// la fenetre "quota MyMemory" du moteur doit pouvoir passer au premier plan
+	AllowSetForegroundWindow (pi.dwProcessId);
 	if (g_moteur != nullptr)
 		CloseHandle (g_moteur);
 	g_moteur = pi.hProcess;
@@ -358,6 +361,21 @@ void LancerMoteur ()
 	g_veille = std::thread (Veiller);
 	Rapport (GS::UniString ("moteur de traduction lance : ") + Uni (exe) + " (port " + GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) +
 			 ", traducteur " + NomFournisseur (g_reglages.fournisseur) + " : " + EtatCle (g_reglages.fournisseur) + ")");
+}
+
+void OuvrirCorrections ()
+{
+	std::wstring erreur;
+	if (!TT::CreerModeleCorrections (g_racine, erreur)) {
+		Rapport (GS::UniString ("ERREUR creation de corrections.json : ") + Uni (erreur));
+		return;
+	}
+	const std::wstring parametres = L"\"" + TT::CheminCorrections (g_racine) + L"\"";
+	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parametres.c_str (), nullptr, SW_SHOWNORMAL);
+	if (reinterpret_cast<INT_PTR> (r) <= 32)
+		Rapport (GS::UniString ("ERREUR ouverture de ") + Uni (TT::CheminCorrections (g_racine)));
+	else
+		Rapport ("corrections.json ouvert dans le Bloc-notes : enregistrez, les fenetres ouvertes suivent aussitot");
 }
 
 void OuvrirCles ()
@@ -494,6 +512,8 @@ GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 			Enregistrer ();
 		} else if (index == kCles) {
 			OuvrirCles ();
+		} else if (index == kCorrections) {
+			OuvrirCorrections ();
 		}
 	} else if (menu == kMenuCommandes) {
 		if (index == kAutomatique) {

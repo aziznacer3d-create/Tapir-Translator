@@ -162,6 +162,7 @@
 /* [  5] */			"LibreTranslate"
 /* [  6] */			"-"
 /* [  7] */			"Clés des traducteurs..."
+/* [  8] */			"Corrections des termes..."
 }
 
 'STR#' 32603 "Aide : traducteur en ligne" {
@@ -174,4 +175,5 @@
 /* [  5] */		"LibreTranslate : adresse d'un serveur LibreTranslate (et sa clé si besoin) à saisir."
 /* [  6] */		""
 /* [  7] */		"Ouvre cles.json dans le Bloc-notes : les clés restent sur ce poste, les scripts ne les voient jamais."
+/* [  8] */		"Ouvre corrections.json : termes à corriger dans les traductions en ligne (ex. story = étage et non histoire), appliqué aussitôt."
 }

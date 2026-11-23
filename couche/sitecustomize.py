@@ -34,7 +34,7 @@ Toute erreur interne est ecrite dans journal.txt et n'atteint jamais le script.
 import os
 import sys
 
-VERSION_COUCHE = "0.5.0"
+VERSION_COUCHE = "0.6.0"
 _PERIODE_MS = 300            # relecture des reglages / dictionnaires, traductions arrivees
 _TAILLE_JOURNAL = 512 * 1024  # au-dela, le journal repart a zero
 
@@ -90,6 +90,7 @@ class _Moteur:
         self.langue_source = ""
         self.table = {}           # texte d'origine -> traduction (langue courante)
         self.table_min = {}       # meme table, cles sans casse
+        self.corrections = []     # (motif de l'original ou None, motif a remplacer, remplacement)
         self.modeles = []         # (regex, gabarit) pour les textes a variables
         self.manquants = {}       # langue -> {texte: ""}
         self.manquants_modifies = False
@@ -121,7 +122,8 @@ class _Moteur:
         return [os.path.join(self.racine, "reglages.json"),
                 os.path.join(dico, "_commun.json"),     # celui de l'add-on (remplace a chaque version)
                 os.path.join(dico, "_perso.json"),      # celui de l'utilisateur (jamais touche)
-                os.path.join(dico, outil + ".json")]
+                os.path.join(dico, outil + ".json"),
+                os.path.join(self.racine, "corrections.json")]   # termes a corriger dans les traductions en ligne
 
     def _calculer_empreinte(self):
         emp = []
@@ -152,7 +154,7 @@ class _Moteur:
         if emp == self.empreinte:
             return False
         self.empreinte = emp
-        reglages_f, commun_f, perso_f, outil_f = self._fichiers()
+        reglages_f, commun_f, perso_f, outil_f, corrections_f = self._fichiers()
 
         reglages = self._lire_json(reglages_f) or {}
         langue = str(reglages.get("langue", "") or "")
@@ -199,6 +201,7 @@ class _Moteur:
             if len(k) >= 2 and "{" not in k:
                 self.table_min.setdefault(k.casefold(), v)
         self.modeles = self._compiler_modeles(self.table)
+        self.corrections = self._compiler_corrections(self._lire_json(corrections_f), langue) if langue else []
         self.cache = {}
 
         # colonnes des dictionnaires : reconnaitre la langue du script (detection automatique)
@@ -213,6 +216,64 @@ class _Moteur:
         self.auto.configurer(bool(reglages.get("moteur", False)) and bool(langue), source, langue, port,
                              str(reglages.get("fournisseur", "") or "mymemory"))
         return True
+
+    # --- corrections de termes (corrections.json) ------------------------------------------
+    @staticmethod
+    def _compiler_corrections(donnees, langue):
+        """corrections.json : {"fr": [regle, ...], "de": [...], ...}. Une regle :
+             {"source": "story", "mauvais": "histoire", "correct": "étage"}
+             {"source": ["story", "stories"], "remplacer": {"histoire": "étage", "histoires": "étages"}}
+             {"mauvais": "Toutes les histoires", "correct": "Tous les étages"}
+        "source" (facultatif) : la regle ne joue que si l'original contient l'un de ces mots.
+        En fr, es et pt, "mauvais"/"correct" d'un seul mot couvrent aussi le pluriel en -s."""
+        import re
+        regles = []
+        if not isinstance(donnees, dict) or not isinstance(donnees.get(langue), list):
+            return regles
+        for r in donnees[langue]:
+            if not isinstance(r, dict):
+                continue
+            paires = []
+            if isinstance(r.get("remplacer"), dict):
+                paires = [(k, v) for k, v in r["remplacer"].items() if isinstance(k, str) and isinstance(v, str) and k]
+            elif isinstance(r.get("mauvais"), str) and isinstance(r.get("correct"), str) and r["mauvais"]:
+                paires = [(r["mauvais"], r["correct"])]
+                m, c = r["mauvais"], r["correct"]
+                if langue in ("fr", "es", "pt") and " " not in m and " " not in c and not m.endswith("s"):
+                    paires.append((m + "s", c + "s"))
+            if not paires:
+                continue
+            sources = r.get("source")
+            if isinstance(sources, str):
+                sources = [sources]
+            motif_source = None
+            if isinstance(sources, list) and sources:
+                mots = [re.escape(s) for s in sources if isinstance(s, str) and s]
+                if mots:
+                    motif_source = re.compile(r"(?<!\w)(?:%s)(?!\w)" % "|".join(mots), re.I)
+            # les expressions les plus longues d'abord ("toutes les histoires" avant "histoires")
+            for mauvais, correct in sorted(paires, key=lambda p: -len(p[0])):
+                regles.append((motif_source, re.compile(r"(?<!\w)%s(?!\w)" % re.escape(mauvais), re.I), correct))
+        regles.sort(key=lambda r: -len(r[1].pattern))
+        return regles
+
+    @staticmethod
+    def _meme_casse(modele, texte):
+        if modele.isupper() and len(modele) > 1:
+            return texte.upper()
+        if modele[:1].isupper():
+            return texte[:1].upper() + texte[1:]
+        return texte
+
+    def corriger(self, original, traduit):
+        """Applique corrections.json a une traduction en ligne (jamais au dictionnaire)."""
+        if not self.corrections or not isinstance(traduit, str) or not traduit:
+            return traduit
+        for motif_source, motif, correct in self.corrections:
+            if motif_source is not None and not motif_source.search(original):
+                continue
+            traduit = motif.sub(lambda m, c=correct: self._meme_casse(m.group(0), c), traduit)
+        return traduit
 
     def _voter(self, texte):
         """Compte dans quelle langue les textes du script sont ecrits (detection automatique)."""
@@ -558,7 +619,9 @@ class _Automatique(object):
             self._charger(cle)
             t = self.memoire[cle].get(texte)
             if t is not None:
-                return (t or None), False
+                # corrections de termes appliquees a l'affichage : une correction ajoutee sert
+                # aussi aux traductions deja en cache
+                return (self.moteur.corriger(texte, t) if t else None), False
             if time.time() < self.panne_jusqua:
                 self.echecs_en_panne = True
                 return None, False

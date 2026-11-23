@@ -13,7 +13,7 @@
 
 namespace TT {
 
-const char* const VersionAddOn = "0.5.0";
+const char* const VersionAddOn = "0.6.0";
 
 // Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
 // colonnes de dictionnaires/_commun.json
@@ -392,6 +392,8 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 	}
 	if (!FichierExiste (CheminCles (racine)) && CreerModeleCles (racine, erreur))
 		journal.push_back (L"fichier des cles cree : " + CheminCles (racine));
+	if (!FichierExiste (CheminCorrections (racine)) && CreerModeleCorrections (racine, erreur))
+		journal.push_back (L"fichier des corrections cree : " + CheminCorrections (racine));
 	return ok;
 }
 
@@ -496,6 +498,70 @@ bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur)
 		"    \"cle\": \"\"\n"
 		"  }\n"
 		"}\n";
+	CreerDossier (racine);
+	return EcrireFichier (chemin, modele, erreur);
+}
+
+
+std::wstring CheminCorrections (const std::wstring& racine)
+{
+	return Joindre (racine, L"corrections.json");
+}
+
+
+bool CreerModeleCorrections (const std::wstring& racine, std::wstring& erreur)
+{
+	const std::wstring chemin = CheminCorrections (racine);
+	if (FichierExiste (chemin))
+		return true;
+	const std::string modele = std::string (R"JSON({
+  "_explication": "Corrections de termes appliquees aux traductions EN LIGNE (pas aux dictionnaires), langue de sortie par langue de sortie. Enregistrez : les fenetres ouvertes et le cache suivent aussitot. Une regle : source = mot(s) de l'original qui declenchent la regle (facultatif) ; mauvais -> correct (en fr, es, pt le pluriel en -s suit tout seul) ou remplacer = { mauvais: correct, ... }. Les expressions les plus longues passent d'abord : mettez-y les accords ('toutes les histoires' -> 'tous les etages'). Pour corriger une phrase entiere, utilisez plutot dictionnaires\\_perso.json.",
+  "fr": [
+    {"source": ["story", "stories"], "remplacer": {
+      "toutes les histoires": "tous les étages", "les histoires": "les étages", "une histoire": "un étage",
+      "cette histoire": "cet étage", "nouvelle histoire": "nouvel étage", "histoire actuelle": "étage actuel",
+      "histoire sélectionnée": "étage sélectionné", "histoires sélectionnées": "étages sélectionnés",
+      "histoire de la maison": "étage de référence", "histoire d'origine": "étage de référence",
+      "histoires": "étages", "histoire": "étage"}},
+    {"source": ["slab", "slabs"], "remplacer": {"plaques": "dalles", "plaque": "dalle"}},
+    {"source": ["beam", "beams"], "remplacer": {
+      "un faisceau": "une poutre", "le faisceau": "la poutre", "ce faisceau": "cette poutre",
+      "faisceaux": "poutres", "faisceau": "poutre"}},
+    {"source": ["layer", "layers"], "remplacer": {
+      "une couche": "un calque", "la couche": "le calque", "cette couche": "ce calque",
+      "toutes les couches": "tous les calques", "couches": "calques", "couche": "calque"}},
+    {"source": ["pen", "pens"], "remplacer": {"plumes": "stylos", "plume": "stylo", "stylets": "stylos", "stylet": "stylo"}},
+    {"source": ["fill", "fills"], "remplacer": {"remplissages": "hachures", "remplissage": "hachure"}},
+    {"source": ["railing", "railings"], "remplacer": {"rampes": "garde-corps", "rampe": "garde-corps"}},
+    {"source": ["curtain wall", "curtain walls"], "remplacer": {
+      "murs de rideau": "murs-rideaux", "mur de rideau": "mur-rideau", "murs-rideau": "murs-rideaux"}},
+    {"source": ["morph", "morphs"], "remplacer": {"morphes": "formes", "morphe": "forme", "morphs": "formes", "morph": "forme"}},
+    {"source": ["mesh", "meshes"], "remplacer": {"mailles": "maillages", "maille": "maillage"}},
+    {"source": ["layout", "layouts"], "remplacer": {"dispositions": "mises en page", "disposition": "mise en page"}}
+  ],
+)JSON") + std::string (R"JSON(  "de": [
+    {"source": ["story", "stories"], "remplacer": {
+      "Geschichten": "Geschosse", "Geschichte": "Geschoss", "Stockwerke": "Geschosse", "Stockwerk": "Geschoss"}},
+    {"source": ["slab", "slabs"], "remplacer": {"Platten": "Decken", "Platte": "Decke"}},
+    {"source": ["layer", "layers"], "remplacer": {"Schichten": "Ebenen", "Schicht": "Ebene"}},
+    {"source": ["beam", "beams"], "remplacer": {"Strahlen": "Unterzüge", "Strahl": "Unterzug"}}
+  ],
+  "es": [
+    {"source": ["story", "stories"], "remplacer": {"historias": "plantas", "historia": "planta"}},
+    {"source": ["beam", "beams"], "remplacer": {"haces": "vigas", "haz": "viga"}}
+  ],
+  "it": [
+    {"source": ["story", "stories"], "remplacer": {"storie": "piani", "storia": "piano"}},
+    {"source": ["slab", "slabs"], "remplacer": {"lastre": "solai", "lastra": "solaio"}},
+    {"source": ["layer", "layers"], "remplacer": {"strati": "layer", "strato": "layer"}},
+    {"source": ["beam", "beams"], "remplacer": {"fasci": "travi", "fascio": "trave"}}
+  ],
+  "pt": [
+    {"source": ["story", "stories"], "remplacer": {"histórias": "pisos", "história": "piso"}},
+    {"source": ["beam", "beams"], "remplacer": {"feixes": "vigas", "feixe": "viga"}}
+  ]
+}
+)JSON");
 	CreerDossier (racine);
 	return EcrireFichier (chemin, modele, erreur);
 }
