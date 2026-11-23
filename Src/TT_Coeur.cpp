@@ -13,7 +13,7 @@
 
 namespace TT {
 
-const char* const VersionAddOn = "0.2.0";
+const char* const VersionAddOn = "0.3.0";
 
 // Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
 // colonnes de dictionnaires/_commun.json
@@ -355,9 +355,12 @@ Reglages LireReglages (const std::wstring& racine)
 			}
 		}
 	}
-	const size_t pos = ApresCle (json, "collecte");
+	size_t pos = ApresCle (json, "collecte");
 	if (pos != std::string::npos)
 		r.collecte = json.compare (pos, 4, "true") == 0;
+	pos = ApresCle (json, "moteur");
+	if (pos != std::string::npos)
+		r.moteur = json.compare (pos, 4, "true") == 0;
 	return r;
 }
 
@@ -373,6 +376,8 @@ bool EcrireReglages (const std::wstring& racine, const Reglages& reglages, std::
 	json += "  \"entree\": \"" + reglages.entree + "\",\n";
 	json += "  \"langue\": \"" + reglages.langue + "\",\n";
 	json += std::string ("  \"collecte\": ") + (reglages.collecte ? "true" : "false") + ",\n";
+	json += std::string ("  \"moteur\": ") + (reglages.moteur ? "true" : "false") + ",\n";
+	json += "  \"port\": " + std::to_string (PortMoteur) + ",\n";
 	json += std::string ("  \"ecrit_par\": \"Tapir Translator ") + VersionAddOn + "\"\n";
 	json += "}\n";
 	return EcrireFichier (Joindre (racine, L"reglages.json"), json, erreur);

@@ -55,6 +55,11 @@ lbl_modele = tk.Label(root, text="3 murs créés")
 lbl_modele.pack()
 lbl_inconnu = tk.Label(root, text="Texte inconnu")
 lbl_inconnu.pack()
+# donnees affichees dans des Label : jamais envoyees au moteur automatique
+lbl_chemin = tk.Label(root, text="C:\\Projets\\plan.pln")
+lbl_chemin.pack()
+lbl_code = tk.Label(root, text="MUR-01")
+lbl_code.pack()
 
 barre = tk.Menu(root, tearoff=0)
 menu_fichier = tk.Menu(barre, tearoff=0)
@@ -99,7 +104,8 @@ def etat():
     e.append(("titre", r.call("wm", "title", "."), root.title()))
     e.append(("statut", r.globalgetvar(str(statut)), statut.get()))
     for cle, w in (("fermer", btn_fermer), ("nom", lbl_nom), ("murs", cb_murs), ("cadre", cadre),
-                   ("multi", lbl_multi), ("modele", lbl_modele), ("inconnu", lbl_inconnu)):
+                   ("multi", lbl_multi), ("modele", lbl_modele), ("inconnu", lbl_inconnu),
+                   ("chemin", lbl_chemin), ("code", lbl_code)):
         e.append((cle, r.call(str(w), "cget", "-text"), w.cget("text")))
     e.append(("menu_fichier", r.call(str(barre), "entrycget", 0, "-label"), barre.entrycget(0, "label")))
     e.append(("menu_ouvrir", r.call(str(menu_fichier), "entrycget", 0, "-label"), menu_fichier.entrycget(0, "label")))

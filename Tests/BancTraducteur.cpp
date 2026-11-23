@@ -276,16 +276,50 @@ std::function<bool (const std::map<std::string, Valeur>&)> Affiche (const std::s
 	};
 }
 
-void Langue (const std::wstring& racine, const char* code, bool collecte, const char* entree = "")
+void Langue (const std::wstring& racine, const char* code, bool collecte, const char* entree = "", bool moteur = false)
 {
 	TT::Reglages r;
 	r.entree = entree;
 	r.langue = code;
 	r.collecte = collecte;
+	r.moteur = moteur;
 	std::wstring erreur;
-	Verifier (std::string ("EcrireReglages entree=\"") + entree + "\" sortie=\"" + code + "\"", TT::EcrireReglages (racine, r, erreur), TT::Utf8 (erreur));
+	Verifier (std::string ("EcrireReglages entree=\"") + entree + "\" sortie=\"" + code + "\"" + (moteur ? " moteur" : ""),
+			  TT::EcrireReglages (racine, r, erreur), TT::Utf8 (erreur));
 	const TT::Reglages relu = TT::LireReglages (racine);
-	Verifier ("LireReglages relit entree et sortie", relu.entree == r.entree && relu.langue == r.langue && relu.collecte == r.collecte);
+	Verifier ("LireReglages relit les reglages", relu.entree == r.entree && relu.langue == r.langue && relu.collecte == r.collecte &&
+			  relu.moteur == r.moteur);
+}
+
+// Moteur de traduction (traducteur d'essai), a cote du banc
+HANDLE LancerMoteur (int port, const std::wstring& journal)
+{
+	wchar_t exe[MAX_PATH] = {};
+	GetModuleFileNameW (nullptr, exe, MAX_PATH);
+	std::wstring chemin = exe;
+	chemin = chemin.substr (0, chemin.find_last_of (L'\\') + 1) + L"TapirTranslatorMoteur.exe";
+	std::wstring ligne = L"\"" + chemin + L"\" --essai --port " + std::to_wstring (port) + L" --parent " +
+						 std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" + journal + L"\"";
+	std::vector<wchar_t> tampon (ligne.begin (), ligne.end ());
+	tampon.push_back (L'\0');
+	STARTUPINFOW si = {};
+	si.cb = sizeof (si);
+	PROCESS_INFORMATION pi = {};
+	if (!CreateProcessW (nullptr, tampon.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+		return nullptr;
+	CloseHandle (pi.hThread);
+	Sleep (500);
+	return pi.hProcess;
+}
+
+void ArreterMoteur (HANDLE& moteur)
+{
+	if (moteur != nullptr) {
+		TerminateProcess (moteur, 0);
+		WaitForSingleObject (moteur, 5000);
+		CloseHandle (moteur);
+		moteur = nullptr;
+	}
 }
 
 void MontrerSortie (Outil& o)
@@ -525,6 +559,75 @@ int main ()
 		DWORD code = 1;
 		Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
 		SetEnvironmentVariableW (L"BANC_UI", nullptr);
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+		Langue (racine, "en", false);
+	}
+
+	// --- traduction automatique hors ligne (moteur d'essai) ----------------------------------
+	std::printf ("\n[3d] Traduction automatique hors ligne (moteur d'essai)\n");
+	{
+		const int port = 8792;	// pas celui d'un vrai moteur (8779)
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_moteur");	// aucun dictionnaire propre
+		const std::wstring journal = TT::Joindre (racine, L"journal.txt");
+		const std::wstring cacheEn = TT::Joindre (TT::Joindre (racine, L"cache"), L"fr-en.json");
+		HANDLE moteur = nullptr;
+		Langue (racine, "en", false, "", true);
+		{
+			Outil o;
+			Verifier ("lancement, moteur absent", o.Lancer (script, racine));
+			Verifier ("dictionnaire applique sans moteur", o.Attendre (Affiche ("fermer", "Close"), 30000));
+			Sleep (3000);
+			Texte (o, "inconnu", "Texte inconnu", "Texte inconnu");		// moteur absent : texte d'origine
+			Texte (o, "logique", "ok");
+
+			moteur = LancerMoteur (port, journal);
+			Verifier ("moteur d'essai lance", moteur != nullptr);
+			Verifier ("moteur revenu : phrase hors dictionnaire traduite en direct (< 25 s)",
+					  o.Attendre (Affiche ("inconnu", "[en] Texte inconnu"), 25000));
+			Texte (o, "inconnu", "[en] Texte inconnu", "Texte inconnu");
+			// le titre peut arriver dans le lot suivant du moteur
+			Verifier ("titre traduit automatiquement", o.Attendre (Affiche ("titre", "[en] Outil de démonstration"), 5000));
+			Texte (o, "titre", "[en] Outil de démonstration", "Outil de démonstration");
+			Texte (o, "fermer", "Close", "Fermer");						// le dictionnaire l'emporte
+			Texte (o, "chemin", "C:\\Projets\\plan.pln", "C:\\Projets\\plan.pln");	// donnee : jamais envoyee
+			Texte (o, "code", "MUR-01", "MUR-01");
+			Texte (o, "ligne_arbre", "Murs", "Murs");
+			Texte (o, "logique", "ok");
+
+			bool enCache = false;
+			for (int i = 0; i < 30 && !enCache; ++i) {
+				std::string c;
+				enCache = TT::LireFichier (cacheEn, c) && c.find ("\"Texte inconnu\": \"[en] Texte inconnu\"") != std::string::npos;
+				if (!enCache)
+					Sleep (100);
+			}
+			Verifier ("traduction gardee dans cache\\fr-en.json (langue fr reconnue)", enCache);
+
+			Langue (racine, "hu", false, "", true);
+			Verifier ("autre langue de sortie : nouvelle traduction automatique", o.Attendre (Affiche ("inconnu", "[hu] Texte inconnu"), 10000));
+			Texte (o, "fermer", "Bezárás", "Fermer");
+
+			Langue (racine, "en", false, "", false);
+			Verifier ("moteur desactive : texte d'origine", o.Attendre (Affiche ("inconnu", "Texte inconnu"), 5000));
+			Texte (o, "fermer", "Close", "Fermer");
+			DWORD code = 1;
+			Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+		}
+		ArreterMoteur (moteur);
+
+		Langue (racine, "en", false, "", true);
+		{
+			Outil o;
+			Verifier ("relance, moteur arrete", o.Lancer (script, racine));
+			Verifier ("traduction reprise du cache, sans moteur", o.Attendre (Affiche ("inconnu", "[en] Texte inconnu"), 30000));
+			// le titre est cree avant que la langue du script soit reconnue : il suit de peu
+			Verifier ("titre repris du cache", o.Attendre (Affiche ("titre", "[en] Outil de démonstration"), 5000));
+			Texte (o, "titre", "[en] Outil de démonstration", "Outil de démonstration");
+			Texte (o, "cadre", "Options", "Options");			// deja anglais : jamais envoye au moteur
+			DWORD code = 1;
+			Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+		}
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
 		Langue (racine, "en", false);
 	}

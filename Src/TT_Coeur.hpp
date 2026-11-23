@@ -31,7 +31,11 @@ struct Reglages {
 	std::string entree;		// langue des scripts, code de Langues[], "" = detection automatique
 	std::string langue;		// langue de sortie, code de Langues[], "" = aucune traduction
 	bool collecte = false;	// noter les textes sans traduction
+	bool moteur = false;	// traduction automatique hors ligne des textes hors dictionnaire
 };
+
+// Port du moteur de traduction hors ligne (127.0.0.1)
+constexpr int PortMoteur = 8779;
 
 // %APPDATA%\Tapir Translator (vide si APPDATA n'existe pas)
 std::wstring DossierParDefaut ();

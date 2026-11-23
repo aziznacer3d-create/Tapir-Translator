@@ -84,16 +84,18 @@
 
 'STR#' 32502 "Menu : commandes" {
 /* [   ] */		"Tapir Translator"
-/* [  1] */			"Collecter les textes non traduits"
-/* [  2] */			"-"
-/* [  3] */			"Ouvrir le dossier des dictionnaires"
-/* [  4] */			"État de Tapir Translator (Rapport de session)"
+/* [  1] */			"Traduction automatique hors ligne (textes hors dictionnaire)"
+/* [  2] */			"Collecter les textes non traduits"
+/* [  3] */			"-"
+/* [  4] */			"Ouvrir le dossier des dictionnaires"
+/* [  5] */			"État de Tapir Translator (Rapport de session)"
 }
 
 'STR#' 32602 "Aide : commandes" {
 /* [   ] */		""
-/* [  1] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
-/* [  2] */		""
-/* [  3] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
-/* [  4] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langues, dictionnaires, fin du journal de la couche."
+/* [  1] */		"Les textes absents des dictionnaires sont traduits par le moteur hors ligne (TapirTranslatorMoteur), puis gardés en cache."
+/* [  2] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
+/* [  3] */		""
+/* [  4] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
+/* [  5] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langues, dictionnaires, fin du journal de la couche."
 }

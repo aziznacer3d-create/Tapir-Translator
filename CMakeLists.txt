@@ -276,3 +276,17 @@ if (WIN32)
 	target_compile_options (BancTraducteur PRIVATE /W3 /WX /utf-8)
 	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
 endif ()
+
+# Moteur de traduction hors ligne (serveur HTTP local lance par l'add-on)
+if (WIN32)
+	add_executable (TapirTranslatorMoteur
+		Moteur/MoteurMain.cpp
+		Moteur/TraducteurEssai.cpp
+		Moteur/Traducteur.hpp
+		Moteur/Json.hpp
+	)
+	target_compile_features (TapirTranslatorMoteur PRIVATE cxx_std_20)
+	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
+	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32)
+	add_dependencies (BancTraducteur TapirTranslatorMoteur)
+endif ()

@@ -34,8 +34,8 @@ Toute erreur interne est ecrite dans journal.txt et n'atteint jamais le script.
 import os
 import sys
 
-VERSION_COUCHE = "0.2.0"
-_PERIODE_MS = 600            # relecture des reglages / dictionnaires
+VERSION_COUCHE = "0.3.0"
+_PERIODE_MS = 300            # relecture des reglages / dictionnaires, traductions arrivees
 _TAILLE_JOURNAL = 512 * 1024  # au-dela, le journal repart a zero
 
 _OPTIONS_TEXTE = ("-text", "-label")
@@ -93,6 +93,12 @@ class _Moteur:
         self.manquants_modifies = False
         self.empreinte = None     # dates des fichiers lus, pour la relecture en direct
         self.cache = {}
+        self.entree = ""
+        self.colonnes = {}        # langue -> textes connus des dictionnaires
+        self.votes = {}           # langue -> nombre de textes du script reconnus
+        self.vus = set()
+        self.detectee = ""
+        self.auto = _Automatique(racine, self)
 
     # --- fichiers ---------------------------------------------------------------------
     def _nom_outil(self):
@@ -189,7 +195,39 @@ class _Moteur:
                 self.table_min.setdefault(k.casefold(), v)
         self.modeles = self._compiler_modeles(self.table)
         self.cache = {}
+
+        # colonnes des dictionnaires : reconnaitre la langue du script (detection automatique)
+        self.colonnes = {}
+        for d in (commun, outil):
+            for t in d.get("termes", []) if isinstance(d.get("termes"), list) else []:
+                if isinstance(t, dict):
+                    for code, texte in t.items():
+                        if isinstance(texte, str) and not code.startswith("_") and "{" not in texte:
+                            self.colonnes.setdefault(code, set()).add(texte)
+        port = os.environ.get("TAPIR_TRANSLATOR_MOTEUR_PORT", "") or str(reglages.get("port", "") or "")
+        self.auto.configurer(bool(reglages.get("moteur", False)) and bool(langue), source, langue, port)
         return True
+
+    def _voter(self, texte):
+        """Compte dans quelle langue les textes du script sont ecrits (detection automatique)."""
+        for code, textes in self.colonnes.items():
+            if texte in textes:
+                self.votes[code] = self.votes.get(code, 0) + 1
+
+    def langue_detectee(self):
+        """Langue du script, figee des qu'elle est reconnue sans ambiguite : sinon un
+        changement d'avis renverrait les textes deja traduits vers une autre paire."""
+        if self.detectee or not self.votes:
+            return self.detectee
+        classement = sorted(self.votes.items(), key=lambda kv: -kv[1])
+        premier = classement[0]
+        second = classement[1][1] if len(classement) > 1 else 0
+        # au moins 2 textes reconnus et une avance nette (les mots identiques comptent
+        # pour plusieurs langues : "Options", "Zone"...)
+        if premier[1] >= 2 and premier[1] > second:
+            self.detectee = premier[0]
+            _journal("langue du script reconnue : %s (%s)" % (self.detectee, dict(classement)))
+        return self.detectee
 
     @staticmethod
     def _depuis_termes(termes, langue, source, seule=False):
@@ -279,10 +317,22 @@ class _Moteur:
         r = self.cache.get(texte)
         if r is not None:
             return r
+        if texte not in self.vus:
+            self.vus.add(texte)
+            self._voter(texte)
         r = self._traduire(texte, True)
+        if r is None and texte.strip() in self.colonnes.get(self.langue, ()):
+            r = texte    # deja valable dans la langue de sortie ("Options", "Zone"...)
         if r is None:
-            r = texte
-            self._noter_manquant(texte)
+            # phrase hors dictionnaire : traduction automatique hors ligne (si activee).
+            # En attente, le texte d'origine reste affiche et n'est pas memorise : il sera
+            # retraduit quand la reponse arrivera.
+            r, en_attente = self.auto.traduire(texte)
+            if en_attente:
+                return texte
+            if r is None:
+                r = texte
+                self._noter_manquant(texte)
         self.cache[texte] = r
         return r
 
@@ -398,6 +448,207 @@ class _Moteur:
             os.replace(tmp, chemin)
         except Exception as e:
             _journal("ecriture des manquants impossible : %r" % e)
+
+
+class _Automatique(object):
+    """Traduction automatique hors ligne des textes que les dictionnaires ne connaissent pas.
+
+    Les textes partent en arriere-plan (fil separe, jamais dans la boucle Tk) vers le
+    moteur local TapirTranslatorMoteur.exe (127.0.0.1, lance par l'add-on). Le texte
+    d'origine reste affiche le temps du calcul, puis la traduction s'affiche toute seule.
+    Les resultats sont gardes dans cache\\<source>-<cible>.json, partage par tous les
+    scripts : la fois suivante, l'affichage est immediat. Un dictionnaire l'emporte
+    toujours sur le moteur."""
+
+    LOT = 16                  # textes par requete
+    PAUSE_PANNE = 15.0        # moteur injoignable : nouvel essai apres ce delai (s)
+    DELAI_DETECTION = 2.0     # langue du script inconnue : attente avant envoi sans langue (s)
+
+    def __init__(self, racine, moteur):
+        import threading
+        self.racine = racine
+        self.moteur = moteur
+        self.actif = False
+        self.source = ""
+        self.cible = ""
+        self.port = "8779"
+        self.verrou = threading.Lock()
+        self.evenement = threading.Event()
+        self.memoire = {}         # (source, cible) -> {texte: traduction, "" = echec}
+        self.attente = []         # [(source, cible, texte)] a envoyer
+        self.demandes = set()     # deja dans la file ou en cours
+        self.modifies = set()     # paires a enregistrer
+        self.nouveau = False      # des traductions sont arrivees
+        self.panne_jusqua = 0.0
+        self.echecs_en_panne = False
+        self.debut_detection = None
+        self.attend_detection = False
+        self.fil = None
+
+    def configurer(self, actif, source, cible, port):
+        self.actif = actif
+        self.source = source
+        self.cible = cible
+        if port:
+            self.port = port
+        if actif and self.fil is None:
+            import threading
+            self.fil = threading.Thread(target=self._travailler, name="TapirTranslatorAuto", daemon=True)
+            self.fil.start()
+
+    @staticmethod
+    def traduisible(texte):
+        """Les donnees affichees dans des Label (chemins, fichiers, identifiants, codes)
+        ne partent pas au moteur."""
+        import re
+        t = texte.strip()
+        if len(t) < 2 or len(t) > 600 or sum(1 for c in t if c.isalpha()) < 2:
+            return False
+        if re.search(r"[\\/]|://|@|\.(py|json|txt|csv|pln|pla|tpl|ifc|dwg|dxf|xlsx?|gsm|png|jpe?g|pdf)\b", t, re.I):
+            return False
+        if " " not in t:
+            if any(c.isdigit() for c in t) or "_" in t or "." in t.strip("."):
+                return False
+            if t.isupper() and len(t) <= 6:
+                return False
+        return True
+
+    def _chemin(self, source, cible):
+        return os.path.join(self.racine, "cache", "%s-%s.json" % (source or "auto", cible))
+
+    def _charger(self, cle):
+        if cle in self.memoire:
+            return
+        d = _Moteur._lire_json(self._chemin(*cle))
+        trad = d.get("traductions") if isinstance(d, dict) else None
+        self.memoire[cle] = dict(trad) if isinstance(trad, dict) else {}
+
+    def traduire(self, texte):
+        """Rend (traduction ou None, en_attente)."""
+        if not self.actif or not self.traduisible(texte):
+            return None, False
+        import time
+        source = self.source or self.moteur.langue_detectee()
+        if not source:
+            # langue du script pas encore reconnue : on attend un peu les autres textes
+            if self.debut_detection is None:
+                self.debut_detection = time.time()
+            if time.time() - self.debut_detection < self.DELAI_DETECTION:
+                self.attend_detection = True
+                return None, True
+        if source == self.cible:
+            return None, False
+        cle = (source, self.cible)
+        with self.verrou:
+            self._charger(cle)
+            t = self.memoire[cle].get(texte)
+            if t is not None:
+                return (t or None), False
+            if time.time() < self.panne_jusqua:
+                self.echecs_en_panne = True
+                return None, False
+            demande = (source, self.cible, texte)
+            if demande not in self.demandes:
+                self.demandes.add(demande)
+                self.attente.append(demande)
+                self.evenement.set()
+        return None, True
+
+    def a_reappliquer(self):
+        """Appele par la boucle Tk : True si l'affichage doit etre recalcule."""
+        import time
+        r = False
+        with self.verrou:
+            if self.nouveau:
+                self.nouveau = False
+                r = True
+            if self.echecs_en_panne and time.time() >= self.panne_jusqua:
+                self.echecs_en_panne = False
+                r = True
+        if self.attend_detection and (self.moteur.langue_detectee() or
+                                      time.time() - (self.debut_detection or 0) >= self.DELAI_DETECTION):
+            self.attend_detection = False
+            r = True
+        return r
+
+    def _travailler(self):
+        import json
+        import time
+        import urllib.error
+        import urllib.request
+        # pas de proxy pour 127.0.0.1 (HTTP_PROXY du poste)
+        ouvreur = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        while True:
+            self.evenement.wait()
+            time.sleep(0.05)   # laisser arriver les textes de la meme fenetre
+            with self.verrou:
+                lot = self.attente[:self.LOT]
+                del self.attente[:self.LOT]
+                if not self.attente:
+                    self.evenement.clear()
+            groupes = {}
+            for source, cible, texte in lot:
+                groupes.setdefault((source, cible), []).append(texte)
+            for (source, cible), textes in groupes.items():
+                try:
+                    corps = json.dumps({"source": source, "cible": cible, "textes": textes},
+                                       ensure_ascii=False).encode("utf-8")
+                    requete = urllib.request.Request(
+                        "http://127.0.0.1:%s/traduire" % self.port, data=corps,
+                        headers={"Content-Type": "application/json; charset=utf-8"})
+                    with ouvreur.open(requete, timeout=120) as reponse:
+                        res = json.loads(reponse.read().decode("utf-8"))
+                    trads = res.get("traductions") if isinstance(res, dict) else None
+                    if not isinstance(trads, list) or len(trads) != len(textes):
+                        raise ValueError("reponse incomplete")
+                    resultats = [t if isinstance(t, str) and t.strip() else "" for t in trads]
+                except urllib.error.HTTPError as e:
+                    # langue refusee, texte intraduisible : echec memorise, pas de nouvel essai
+                    _journal("moteur : HTTP %s pour %d texte(s) %s -> %s" % (e.code, len(textes), source or "auto", cible))
+                    resultats = [""] * len(textes)
+                except Exception as e:
+                    with self.verrou:
+                        for t in textes:
+                            self.demandes.discard((source, cible, t))
+                        if time.time() >= self.panne_jusqua:
+                            _journal("moteur injoignable sur le port %s (%r) : nouvel essai dans %d s"
+                                     % (self.port, e, int(self.PAUSE_PANNE)))
+                        self.panne_jusqua = time.time() + self.PAUSE_PANNE
+                        self.echecs_en_panne = True
+                    continue
+                with self.verrou:
+                    self._charger((source, cible))
+                    m = self.memoire[(source, cible)]
+                    for t, r in zip(textes, resultats):
+                        m[t] = r
+                        self.demandes.discard((source, cible, t))
+                    self.modifies.add((source, cible))
+                    self.nouveau = True
+            self._enregistrer()
+
+    def _enregistrer(self):
+        import json
+        with self.verrou:
+            paires = list(self.modifies)
+            self.modifies.clear()
+            copies = {p: dict(self.memoire.get(p, {})) for p in paires}
+        for (source, cible), traductions in copies.items():
+            try:
+                chemin = self._chemin(source, cible)
+                os.makedirs(os.path.dirname(chemin), exist_ok=True)
+                # un autre script a pu ecrire le meme cache : on fusionne
+                existant = _Moteur._lire_json(chemin)
+                if isinstance(existant, dict) and isinstance(existant.get("traductions"), dict):
+                    fusion = dict(existant["traductions"])
+                    fusion.update(traductions)
+                    traductions = fusion
+                tmp = chemin + ".%d.tmp" % os.getpid()
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump({"source": source, "cible": cible, "traductions": traductions},
+                              f, ensure_ascii=False, indent=1, sort_keys=True)
+                os.replace(tmp, chemin)
+            except Exception as e:
+                _journal("cache de traduction non enregistre : %r" % e)
 
 
 _moteur = None
@@ -779,7 +1030,11 @@ def _surveiller(racine):
     """Relit reglages et dictionnaires toutes les _PERIODE_MS tant que la fenetre vit."""
     def tic():
         try:
-            if _moteur.recharger_si_change():
+            change = _moteur.recharger_si_change()
+            if _moteur.auto.a_reappliquer():
+                _moteur.cache = {}   # des traductions automatiques sont arrivees
+                change = True
+            if change:
                 for inter in list(_intermediaires):
                     inter.reappliquer()
             _moteur.ecrire_manquants()
