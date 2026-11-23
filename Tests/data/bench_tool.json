@@ -1,18 +1,18 @@
 {
-  "source_language": "fr",
+  "source_language": "en",
   "translations": {
-    "en": {
-      "Outil de démonstration": "Demo tool",
-      "Première ligne": "First line",
-      "Deuxième ligne": "Second line",
-      "{n} murs créés": "{n} walls created",
-      "Général": "General",
-      "Avancé": "Advanced",
-      "Plan": "Floor plan"
+    "fr": {
+      "Demo tool": "Outil de démonstration",
+      "First line": "Première ligne",
+      "Second line": "Deuxième ligne",
+      "{n} walls created": "{n} murs créés",
+      "General": "Général",
+      "Advanced": "Avancé",
+      "Floor plan": "Plan"
     },
     "de": {
-      "Outil de démonstration": "Demo-Werkzeug",
-      "{n} murs créés": "{n} Wände erstellt"
+      "Demo tool": "Demo-Werkzeug",
+      "{n} walls created": "{n} Wände erstellt"
     }
   }
 }

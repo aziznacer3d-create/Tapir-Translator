@@ -271,7 +271,7 @@ in `RFIX.win/Tapir_Translator.rc2`, otherwise its resources are not in the `.apx
 build\RelWithDebInfo\TranslatorBench.exe
 ```
 
-It launches the fake script `Tests/bench_tool.py` (tkinter interface in French) with `uv run --script`,
+It launches the fake script `Tests/bench_tool.py` (tkinter interface in English, with a French variant) with `uv run --script`,
 like the Tapir palette, with the environment prepared by the add-on code (`Src/TT_Core.cpp`). It checks
 the packing of the `.apx` (engine and menu resources inside), the dictionaries, the test engine, the
 online translators against a fake server speaking the formats of the 5 services, the corrections and

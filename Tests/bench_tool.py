@@ -8,7 +8,7 @@ Fake Tapir script used by the Tapir Translator test bench (Tests/TranslatorBench
 What this file is (and is not)
 ------------------------------
 This file is NOT the translation layer: it is the tool to be translated, written like an
-ordinary Tapir script (a tkinter interface in French, with no knowledge at all of the
+ordinary Tapir script (a tkinter interface in English, with no knowledge at all of the
 translation). The inline "# /// script" block above is the PEP 723 metadata that uv reads.
 The bench starts it with "uv run --script bench_tool.py --port N", exactly like the Tapir
 palette does, so the translation layer (sitecustomize.py, placed on the PYTHONPATH by the
@@ -27,9 +27,9 @@ Other lines it prints:
   LAYER|active or LAYER|missing  -> whether the layer is installed in front of Tcl
   TOOL_END                        -> the Tk main loop has ended
 
-Commands (file <BENCH_EXCHANGE>\\command_.txt, written by the bench, polled every tick):
-  caps  -> the script itself changes some texts (status, label) while being translated
-  end_  -> close the window and exit
+Commands (file <BENCH_EXCHANGE>\\command.txt, written by the bench, polled every tick):
+  update -> the script itself changes some texts (status, label) while being translated
+  end    -> close the window and exit
 """
 import os
 import sys
@@ -38,90 +38,95 @@ from tkinter import ttk
 
 # Exchange folder shared with the bench (holds command_.txt).
 EXCHANGE = os.environ.get("BENCH_EXCHANGE", ".")
-# BENCH_UI=en: the same interface written in English instead of French, to emulate a script
-# whose source language is not declared (the layer must detect it). Only the texts listed
-# here change; every other text stays in French.
-T = ({"Fermer": "Close", "Nom :": "Name:", "Murs": "Walls", "Prêt": "Ready", "Terminé": "Done",
-      "Quitter": "Quit", "Fichier": "File", "Tous les étages": "All stories"}
-     if os.environ.get("BENCH_UI") == "en" else {})
+# BENCH_UI=fr: the same interface written in French instead of English, to emulate a script
+# written in another language whose source language is not declared (the layer must
+# recognise it). Every interface text listed here changes; the data (path, code, Treeview
+# row, Combobox values, Entry contents) stays as it is.
+T = ({"Demo tool": "Outil de démonstration", "Ready": "Prêt", "Done": "Terminé", "Close": "Fermer",
+      "Name:": "Nom :", "Walls": "Murs", "First line\nSecond line": "Première ligne\nDeuxième ligne",
+      "3 walls created": "3 murs créés", "Unknown text": "Texte inconnu", "All stories": "Tous les étages",
+      "Open...": "Ouvrir...", "Quit": "Quitter", "File": "Fichier", "General": "Général",
+      "Advanced": "Avancé", "Name": "Nom", "Value": "Valeur", "Floor plan": "Plan"}
+     if os.environ.get("BENCH_UI") == "fr" else {})
 
 
-# Returns the text in the interface language chosen by BENCH_UI (French by default).
+# Returns the text in the interface language chosen by BENCH_UI (English by default).
 def t(text):
     return T.get(text, text)
 
 
 # --- Interface: one widget of each kind the layer is supposed to translate (or not) ---
 root = tk.Tk()
-root.title("Outil de démonstration")
+root.title(t("Demo tool"))
 
 # Status shown through a StringVar (the layer translates the displayed variable only).
-status = tk.StringVar(value=t("Prêt"))
+status = tk.StringVar(value=t("Ready"))
 tk.Label(root, textvariable=status).pack()
 
 # Plain "text" options of Tk and ttk widgets.
-btn_close = tk.Button(root, text=t("Fermer"))
+btn_close = tk.Button(root, text=t("Close"))
 btn_close.pack()
-lbl_name = ttk.Label(root, text=t("Nom :"))
+lbl_name = ttk.Label(root, text=t("Name:"))
 lbl_name.pack()
-cb_walls = tk.Checkbutton(root, text=t("Murs"))
+cb_walls = tk.Checkbutton(root, text=t("Walls"))
 cb_walls.pack()
-# "Options" is already valid English: it must never be sent to the online engine.
+# "Options" is also valid French: towards French it must never be sent to the online engine.
 frame_ = ttk.LabelFrame(root, text="Options")
 frame_.pack()
 # Multi-line text, and a text with a number (matches a "{n} ..." dictionary pattern).
-lbl_multi = tk.Label(root, text="Première ligne\nDeuxième ligne")
+lbl_multi = tk.Label(root, text=t("First line\nSecond line"))
 lbl_multi.pack()
-lbl_pattern = tk.Label(root, text="3 murs créés")
+lbl_pattern = tk.Label(root, text=t("3 walls created"))
 lbl_pattern.pack()
 # Text absent from every dictionary: only the online/test engine can translate it.
-lbl_unknown = tk.Label(root, text="Texte inconnu")
+lbl_unknown = tk.Label(root, text=t("Unknown text"))
 lbl_unknown.pack()
 # Data shown in Labels (a path, an element code): never sent to the automatic engine.
-lbl_path = tk.Label(root, text="C:\\Projets\\plan.pln")
+lbl_path = tk.Label(root, text="C:\\Projects\\plan.pln")
 lbl_path.pack()
-lbl_code = tk.Label(root, text="MUR-01")
-# Sentence where an Archicad term is mistranslated by online translators ("story" -> "histoire");
-# used to test the term corrections (corrections.json).
-lbl_stories = tk.Label(root, text=t("Tous les étages"))
+lbl_code = tk.Label(root, text="WALL-01")
+# Sentence with an Archicad term that online translators mistranslate into French
+# ("story" -> "histoire" instead of "étage"); used to test the term corrections
+# (corrections.json).
+lbl_stories = tk.Label(root, text=t("All stories"))
 lbl_stories.pack()
 lbl_code.pack()
 
 # Menu bar: cascade label and command labels.
 bar = tk.Menu(root, tearoff=0)
 menu_file = tk.Menu(bar, tearoff=0)
-menu_file.add_command(label="Ouvrir...")
+menu_file.add_command(label=t("Open..."))
 menu_file.add_separator()
-menu_file.add_command(label=t("Quitter"))
-bar.add_cascade(label=t("Fichier"), menu=menu_file)
+menu_file.add_command(label=t("Quit"))
+bar.add_cascade(label=t("File"), menu=menu_file)
 root.config(menu=bar)
 
 # Notebook tabs.
 notebook_ = ttk.Notebook(root)
 p1 = ttk.Frame(notebook_)
 p2 = ttk.Frame(notebook_)
-notebook_.add(p1, text="Général")
-notebook_.add(p2, text="Avancé")
+notebook_.add(p1, text=t("General"))
+notebook_.add(p2, text=t("Advanced"))
 notebook_.pack()
 
 # Treeview: column headings are translated, row contents are data and are not.
-tree = ttk.Treeview(root, columns=("valeur",))
-tree.heading("#0", text="Nom")
-tree.heading("valeur", text="Valeur")
-line = tree.insert("", "end", text="Murs", values=("Dalles",))
+tree = ttk.Treeview(root, columns=("value",))
+tree.heading("#0", text=t("Name"))
+tree.heading("value", text=t("Value"))
+line = tree.insert("", "end", text="Walls", values=("Slabs",))
 tree.pack()
 
 # Canvas text item.
 canvas_ = tk.Canvas(root, width=120, height=40)
-canvas_text = canvas_.create_text(-5, 20, text="Plan", anchor="w")
+canvas_text = canvas_.create_text(-5, 20, text=t("Floor plan"), anchor="w")
 canvas_.pack()
 
 # Combobox values and Entry contents are data: never translated.
-combo = ttk.Combobox(root, values=["Murs", "Dalles"])
-combo.set("Murs")
+combo = ttk.Combobox(root, values=["Walls", "Slabs"])
+combo.set("Walls")
 combo.pack()
 entry = tk.Entry(root)
-entry.insert(0, "Murs")
+entry.insert(0, "Walls")
 entry.pack()
 
 
@@ -154,7 +159,7 @@ def state():
     e.append(("entry", entry.get(), entry.get()))
     # The script logic compares original texts: it must keep working while translated
     # ("ok" when the comparisons still succeed, "BROKEN" otherwise).
-    e.append(("logic", "ok" if btn_close.cget("text") == t("Fermer") and status.get() in (t("Prêt"), t("Terminé")) else "BROKEN", ""))
+    e.append(("logic", "ok" if btn_close.cget("text") == t("Close") and status.get() in (t("Ready"), t("Done")) else "BROKEN", ""))
     return e
 
 
@@ -178,8 +183,8 @@ def tic():
     if command_ != last_command:
         last_command = command_
         if command_ == "update":
-            status.set(t("Terminé"))
-            lbl_name.config(text="Valeur")
+            status.set(t("Done"))
+            lbl_name.config(text=t("Value"))
         elif command_ == "end":
             root.destroy()
             return
