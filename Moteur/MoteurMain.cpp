@@ -25,6 +25,7 @@
 #include "Json.hpp"
 #include "Traducteur.hpp"
 #include "Dialogue.hpp"
+#include "TT_Textes.hpp"
 
 #include <atomic>
 
@@ -38,7 +39,7 @@
 
 namespace {
 
-const char* const kVersion = "0.6.0";
+const char* const kVersion = "0.7.0";
 std::string g_journal;
 
 void Journal (const std::string& ligne)
@@ -128,6 +129,7 @@ struct Contexte {
 	std::unique_ptr<Traducteur> local;	// --modele (option de build TT_MODELE_LOCAL)
 	std::string cles;					// --cles : cles.json des traducteurs en ligne
 	bool sansDialogue = false;			// --sans-dialogue (banc) : pas de fenetre "quota MyMemory"
+	int langueInterface = 1;			// --interface fr / en / ... (TT_Textes.hpp)
 	std::atomic<bool> dialogueOuvert { false };
 	std::atomic<unsigned long long> plusTardJusqua { 0 };
 };
@@ -205,7 +207,7 @@ void SignalerQuotaMyMemory (Contexte& c)
 	}
 	c.dialogueOuvert = true;
 	std::thread ([&c, email, avecEmail] () mutable {
-		const ReponseQuota r = DemanderEmailMyMemory (email, avecEmail);
+		const ReponseQuota r = DemanderEmailMyMemory (email, avecEmail, c.langueInterface);
 		if (r == ReponseQuota::Enregistree) {
 			if (EnregistrerEmail (c.cles, email))
 				Journal ("e-mail MyMemory enregistre dans cles.json : quota porte a environ 50 000 caracteres/jour");
@@ -331,10 +333,12 @@ int main (int argc, char** argv)
 			contexte.cles = argv[++i];
 		else if (a == "--sans-dialogue")
 			contexte.sansDialogue = true;
+		else if (a == "--interface" && i + 1 < argc)
+			contexte.langueInterface = TT::IndiceInterface (argv[++i]);
 		else if (a == "--montrer-quota" && i + 1 < argc) {
 			// developpement : affiche la fenetre du quota MyMemory (0 = anonyme, 1 = avec e-mail)
 			std::string email = "moi@exemple.fr";
-			return static_cast<int> (DemanderEmailMyMemory (email, std::atoi (argv[i + 1]) != 0));
+			return static_cast<int> (DemanderEmailMyMemory (email, std::atoi (argv[i + 1]) != 0, contexte.langueInterface));
 		}
 		else if (a == "--enregistrer-email" && i + 2 < argc) {
 			// utilitaire (banc) : ecrit l'e-mail MyMemory dans cles.json et s'arrete

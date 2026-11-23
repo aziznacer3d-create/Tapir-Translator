@@ -287,6 +287,7 @@ if (WIN32)
 		Moteur/TraducteursEnLigne.cpp
 		Moteur/Dialogue.cpp
 		Moteur/Dialogue.hpp
+		Src/TT_Textes.cpp
 		Moteur/Http.cpp
 		Moteur/Http.hpp
 		Moteur/Traducteur.hpp
@@ -295,6 +296,7 @@ if (WIN32)
 	target_compile_features (TapirTranslatorMoteur PRIVATE cxx_std_20)
 	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
 	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32 Winhttp)
+	target_include_directories (TapirTranslatorMoteur PRIVATE Src)
 	# CRT statique : le moteur ne depend d'aucune DLL
 	set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	add_dependencies (BancTraducteur TapirTranslatorMoteur)
@@ -358,5 +360,20 @@ if (WIN32)
 		COMMENT "Embarquement du moteur de traduction dans le .apx..."
 	)
 	add_dependencies (AddOn TapirTranslatorMoteur Empaqueter)
-	target_sources (BancTraducteur PRIVATE Src/TT_Charge.cpp)
+	target_sources (BancTraducteur PRIVATE Src/TT_Charge.cpp Src/TT_Textes.cpp)
+endif ()
+
+# Menus de l'add-on dans les 20 langues d'ArchiCAD : RFIX/Tapir_TranslatorMenus.grc est genere a
+# partir de Src/TT_Textes.cpp avant la compilation des ressources (reecrit seulement s'il change).
+if (WIN32)
+	add_executable (GenererMenus Tools/GenererMenus.cpp Src/TT_Textes.cpp Src/TT_Textes.hpp)
+	target_include_directories (GenererMenus PRIVATE Src)
+	target_compile_features (GenererMenus PRIVATE cxx_std_20)
+	target_compile_options (GenererMenus PRIVATE /W3 /WX /utf-8)
+	add_custom_target (MenusLocalises
+		COMMAND "$<TARGET_FILE:GenererMenus>" "${CMAKE_CURRENT_LIST_DIR}/RFIX/Tapir_TranslatorMenus.grc"
+		DEPENDS GenererMenus
+		COMMENT "Menus de Tapir Translator dans les 20 langues..."
+	)
+	add_dependencies (AddOnResources MenusLocalises)
 endif ()

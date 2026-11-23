@@ -17,6 +17,7 @@
 
 #include "TT_Charge.hpp"
 #include "TT_Coeur.hpp"
+#include "TT_Textes.hpp"
 
 #if !defined (WIN32_LEAN_AND_MEAN)
 	#define WIN32_LEAN_AND_MEAN
@@ -1113,6 +1114,45 @@ int main ()
 		}
 		Verifier ("journal ecrit", !lignes.empty ());
 		Verifier ("aucune erreur interne de la couche", !erreur);
+	}
+
+	// --- langue de l'outil lui-meme (menus, messages, fenetre) --------------------------------
+	std::printf ("\n[6] Langue de Tapir Translator (20 langues, celle d'ArchiCAD par defaut)\n");
+	{
+		Verifier ("table des textes complete (51 textes x 20 langues)", TT::TextesManquants () == 0,
+				  std::to_string (TT::TextesManquants ()) + " case(s) vide(s)");
+		Verifier ("ArchiCAD FRA -> francais", TT::IndiceInterface (TT::LangueDepuisArchicad ("FRA")) == 0);
+		Verifier ("ArchiCAD GER / AUT -> allemand", TT::LangueDepuisArchicad ("GER") == "de" && TT::LangueDepuisArchicad ("AUT") == "de");
+		Verifier ("ArchiCAD INT / USA / UKI -> anglais", TT::LangueDepuisArchicad ("INT") == "en" && TT::LangueDepuisArchicad ("UKI") == "en");
+		Verifier ("ArchiCAD BRA -> portugais, TAI -> chinois, JPN -> japonais",
+				  TT::LangueDepuisArchicad ("BRA") == "pt" && TT::LangueDepuisArchicad ("TAI") == "zh" && TT::LangueDepuisArchicad ("JPN") == "ja");
+		Verifier ("version inconnue -> anglais", TT::LangueDepuisArchicad ("XYZ") == "en" && TT::IndiceInterface ("xx") == 1);
+		Verifier ("textes avec valeurs (TxtF)", TT::TxtF (TT::R_DEMARRAGE, 2, { { "v", "9" }, { "l", "fr -> de" } }) ==
+												"Tapir Translator 9 aktiv. Sprachen: fr -> de.");
+		Verifier ("fenetre du quota en hongrois", std::string (TT::Txt (TT::D_ENREGISTRER, TT::IndiceInterface ("hu"))) == "Mentés");
+
+		TT::Reglages r;
+		r.interface = "ja";
+		std::wstring erreur;
+		TT::EcrireReglages (racine, r, erreur);
+		Verifier ("reglages : langue de l'outil relue (ja)", TT::LireReglages (racine).interface == "ja");
+		r.interface = "";
+		TT::EcrireReglages (racine, r, erreur);
+		Verifier ("reglages : langue de l'outil = comme ArchiCAD (vide)", TT::LireReglages (racine).interface.empty ());
+
+		std::string grc;
+		const std::wstring menus = TT::Joindre (TT::Joindre (DossierTests ().substr (0, DossierTests ().find_last_of (L'\\')), L"RFIX"),
+												L"Tapir_TranslatorMenus.grc");
+		bool tous = TT::LireFichier (menus, grc);
+		for (int l = 0; l < TT::NombreLanguesInterface && tous; ++l) {
+			for (int m = 0; m < 5 && tous; ++m) {
+				const int id = TT::BaseMenus (l) + m;
+				tous = grc.find ("'STR#' " + std::to_string (id) + " ") != std::string::npos &&
+					   grc.find ("'STR#' " + std::to_string (id + TT::DecalageAides) + " ") != std::string::npos;
+			}
+		}
+		Verifier ("menus generes pour les 20 langues (5 menus + aides chacune)", tous);
+		Verifier ("menus generes : japonais present", grc.find (TT::Txt (TT::M_TRADUCTEUR, TT::IndiceInterface ("ja"))) != std::string::npos);
 	}
 
 	std::printf ("\n%d OK, %d ECHEC(S)\n", g_ok, g_echecs);

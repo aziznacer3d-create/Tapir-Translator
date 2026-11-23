@@ -6,6 +6,7 @@
 // *****************************************************************************
 
 #include "Dialogue.hpp"
+#include "TT_Textes.hpp"
 
 #if !defined (WIN32_LEAN_AND_MEAN)
 	#define WIN32_LEAN_AND_MEAN
@@ -26,6 +27,7 @@ struct Etat {
 	HFONT police = nullptr;
 	HWND champ = nullptr;
 	HWND erreur = nullptr;
+	std::wstring invalide;		// "Adresse e-mail invalide." dans la langue de l'outil
 };
 
 std::wstring Large (const std::string& s)
@@ -69,7 +71,7 @@ LRESULT CALLBACK Procedure (HWND fenetre, UINT message, WPARAM w, LPARAM l)
 				while (!e.empty () && e.front () == L' ')
 					e.erase (0, 1);
 				if (!EmailValide (e)) {
-					SetWindowTextW (etat->erreur, L"Adresse e-mail invalide.");
+					SetWindowTextW (etat->erreur, etat->invalide.c_str ());
 					SetFocus (etat->champ);
 					return 0;
 				}
@@ -99,7 +101,7 @@ LRESULT CALLBACK Procedure (HWND fenetre, UINT message, WPARAM w, LPARAM l)
 }	// namespace
 
 
-ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail)
+ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int langue)
 {
 	SetProcessDPIAware ();
 	HDC ecran = GetDC (nullptr);
@@ -119,6 +121,8 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail)
 
 	Etat etat;
 	etat.avecEmail = avecEmail;
+	etat.invalide = Large (TT::Txt (TT::D_INVALIDE, langue));
+	const std::wstring titre = L"Tapir Translator - " + Large (TT::Txt (TT::D_TITRE, langue));
 	NONCLIENTMETRICSW mesures = {};
 	mesures.cbSize = sizeof (mesures);
 	SystemParametersInfoW (SPI_GETNONCLIENTMETRICS, sizeof (mesures), &mesures, 0);
@@ -128,7 +132,7 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail)
 	RECT zone = { 0, 0, largeur, hauteur };
 	AdjustWindowRectEx (&zone, WS_CAPTION | WS_SYSMENU, FALSE, WS_EX_DLGMODALFRAME | WS_EX_TOPMOST);
 	const int lf = zone.right - zone.left, hf = zone.bottom - zone.top;
-	HWND fenetre = CreateWindowExW (WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, classe.lpszClassName, L"Tapir Translator - quota MyMemory atteint",
+	HWND fenetre = CreateWindowExW (WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, classe.lpszClassName, titre.c_str (),
 									WS_CAPTION | WS_SYSMENU, (GetSystemMetrics (SM_CXSCREEN) - lf) / 2,
 									(GetSystemMetrics (SM_CYSCREEN) - hf) / 2, lf, hf, nullptr, nullptr, instance, nullptr);
 	if (fenetre == nullptr) {
@@ -137,41 +141,36 @@ ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail)
 	}
 	SetWindowLongPtrW (fenetre, GWLP_USERDATA, reinterpret_cast<LONG_PTR> (&etat));
 
-	const wchar_t* texte = avecEmail
-		? L"MyMemory a atteint aujourd'hui son quota gratuit, même avec votre adresse e-mail "
-		  L"(environ 50 000 caractères par jour).\r\n\r\n"
-		  L"Les textes déjà traduits restent affichés depuis le cache. Pour le reste : attendez demain, "
-		  L"ou choisissez un autre traducteur dans ArchiCAD, menu Tapir Translator > Traducteur en ligne "
-		  L"(DeepL et Microsoft offrent un quota mensuel gratuit, avec une clé)."
-		: L"MyMemory a atteint son quota gratuit anonyme (environ 5 000 caractères par jour).\r\n\r\n"
-		  L"Avec une adresse e-mail, MyMemory accorde environ 50 000 caractères par jour. "
-		  L"Aucun compte ni mot de passe n'est nécessaire. L'adresse est envoyée à MyMemory avec chaque "
-		  L"demande (pour vous joindre en cas de problème) et enregistrée dans cles.json sur ce poste.";
-	HWND statique = CreateWindowExW (0, L"STATIC", texte, WS_CHILD | WS_VISIBLE, E (16), E (14), largeur - E (32), E (avecEmail ? 130 : 110),
+	const std::wstring texte = avecEmail
+		? Large (TT::TxtF (TT::D_AVEC_EMAIL, langue, { { "menu", std::string ("Tapir Translator > ") + TT::Txt (TT::M_TRADUCTEUR, langue) } }))
+		: Large (TT::Txt (TT::D_ANONYME, langue));
+	HWND statique = CreateWindowExW (0, L"STATIC", texte.c_str (), WS_CHILD | WS_VISIBLE, E (16), E (14), largeur - E (32), E (avecEmail ? 130 : 110),
 									 fenetre, reinterpret_cast<HMENU> (static_cast<INT_PTR> (kTexte)), instance, nullptr);
 	SendMessageW (statique, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 
 	int y = E (avecEmail ? 154 : 130);
 	if (!avecEmail) {
-		HWND libelle = CreateWindowExW (0, L"STATIC", L"Adresse e-mail :", WS_CHILD | WS_VISIBLE, E (16), y + E (4), E (110), E (20), fenetre,
-										nullptr, instance, nullptr);
+		HWND libelle = CreateWindowExW (0, L"STATIC", Large (TT::Txt (TT::D_LIBELLE, langue)).c_str (), WS_CHILD | WS_VISIBLE, E (16), y + E (4),
+										E (150), E (20), fenetre, nullptr, instance, nullptr);
 		SendMessageW (libelle, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 		etat.champ = CreateWindowExW (WS_EX_CLIENTEDGE, L"EDIT", Large (email).c_str (), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-									  E (130), y, largeur - E (146), E (26), fenetre,
+									  E (170), y, largeur - E (186), E (26), fenetre,
 									  reinterpret_cast<HMENU> (static_cast<INT_PTR> (kEmail)), instance, nullptr);
 		SendMessageW (etat.champ, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
-		etat.erreur = CreateWindowExW (0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, E (130), y + E (30), largeur - E (146), E (20), fenetre,
+		etat.erreur = CreateWindowExW (0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, E (170), y + E (30), largeur - E (186), E (20), fenetre,
 									   reinterpret_cast<HMENU> (static_cast<INT_PTR> (kErreur)), instance, nullptr);
 		SendMessageW (etat.erreur, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 		y += E (62);
 	}
 	const int lb = E (110), hb = E (30);
-	HWND ok = CreateWindowExW (0, L"BUTTON", avecEmail ? L"OK" : L"Enregistrer", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+	const std::wstring enregistrer = avecEmail ? std::wstring (L"OK") : Large (TT::Txt (TT::D_ENREGISTRER, langue));
+	const std::wstring plusTardTexte = Large (TT::Txt (TT::D_PLUS_TARD, langue));
+	HWND ok = CreateWindowExW (0, L"BUTTON", enregistrer.c_str (), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
 							   largeur - E (16) - lb - (avecEmail ? 0 : lb + E (10)), y, lb, hb, fenetre,
 							   reinterpret_cast<HMENU> (static_cast<INT_PTR> (kEnregistrer)), instance, nullptr);
 	SendMessageW (ok, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 	if (!avecEmail) {
-		HWND plusTard = CreateWindowExW (0, L"BUTTON", L"Plus tard", WS_CHILD | WS_VISIBLE | WS_TABSTOP, largeur - E (16) - lb, y, lb, hb,
+		HWND plusTard = CreateWindowExW (0, L"BUTTON", plusTardTexte.c_str (), WS_CHILD | WS_VISIBLE | WS_TABSTOP, largeur - E (16) - lb, y, lb, hb,
 										 fenetre, reinterpret_cast<HMENU> (static_cast<INT_PTR> (kPlusTard)), instance, nullptr);
 		SendMessageW (plusTard, WM_SETFONT, reinterpret_cast<WPARAM> (etat.police), TRUE);
 	}

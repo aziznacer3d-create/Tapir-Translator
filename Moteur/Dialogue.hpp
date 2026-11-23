@@ -17,6 +17,7 @@ enum class ReponseQuota { Fermee, Enregistree, PlusTard };
 
 // email : pre-rempli, recoit l'adresse saisie si Enregistree.
 // avecEmail : le quota de 50 000 caracteres (avec e-mail) est lui aussi atteint -> simple information.
-ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail);
+// langue : indice de langue de l'interface (TT_Textes.hpp)
+ReponseQuota DemanderEmailMyMemory (std::string& email, bool avecEmail, int langue);
 
 #endif

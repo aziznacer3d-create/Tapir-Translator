@@ -217,9 +217,27 @@ Sans ces éléments, le projet compile quand même : le moteur ne connaît alors
 | Options > Collecter les textes non traduits | coché = notation dans `manquants\` |
 | Options > Ouvrir le dossier des dictionnaires | ouvre `%APPDATA%\Tapir Translator` |
 | Options > État de Tapir Translator | Rapport de session : dossiers, PYTHONPATH, langues, traducteur choisi et état de chaque clé (jamais la clé), moteur, dictionnaires, textes manquants, fin du journal |
+| Langue de Tapir Translator > Comme ArchiCAD / 20 langues | langue de l'outil lui-même (voir ci-dessous) |
 
 La couche et le moteur écrivent leurs erreurs dans `%APPDATA%\Tapir Translator\journal.txt` : elles
 n'atteignent jamais le script.
+
+## Langue de l'outil
+
+L'interface de Tapir Translator lui-même (menus, aides de la barre d'état, fenêtre du quota MyMemory,
+messages du Rapport de session) existe dans les 20 langues d'ArchiCAD.
+
+- Par défaut (**Comme ArchiCAD**), elle suit la langue de la version d'ArchiCAD installée (code fourni
+  par l'API : FRA → français, GER / AUT / CHE → allemand, INT / USA / UKI / AUS / NZE → anglais,
+  BRA / POR → portugais, CHI / TAI → chinois, JPN → japonais...).
+- Le menu **Langue de Tapir Translator** permet d'en forcer une autre (réglage `interface` de
+  `reglages.json`). Les messages et la fenêtre changent tout de suite ; les menus, fixés par ArchiCAD à
+  son démarrage, changent au **prochain démarrage**.
+- Les textes sont dans `Src/TT_Textes.cpp` (une ligne par texte, une colonne par langue). Les menus sont
+  générés au build par `Tools/GenererMenus.cpp` dans `RFIX/Tapir_TranslatorMenus.grc` (STR#
+  32500 + 10 × langue, aides à + 1000) ; l'add-on n'enregistre que ceux de la langue choisie.
+- Le diagnostic détaillé (Options > État) reste en français, ou en anglais pour les autres langues.
+- Traductions à faire relire par des locuteurs natifs.
 
 ## Build (Windows)
 
@@ -267,6 +285,8 @@ bout. `uv` doit être dans le `PATH`.
 - v0.6.0 : fenêtre « quota MyMemory » (saisie de l'e-mail, sans mot de passe) ; corrections de termes
   `corrections.json` appliquées en direct aux traductions en ligne. Banc **349 / 349**. MyMemory testé
   dans ArchiCAD par l'utilisateur (v0.5.0) : fonctionne.
+- v0.7.0 : interface de l'outil dans les 20 langues d'ArchiCAD, suit la langue d'ArchiCAD par défaut (menu
+  Langue de Tapir Translator pour en forcer une) ; menus générés au build. Banc **361 / 361**.
 - Pas encore traduits : les interfaces HTML servies par un script (serveur local), les boutons des boîtes
   de message (Windows les affiche dans sa propre langue) et les fenêtres « Script UI » de Tapir.
 

@@ -33,6 +33,7 @@ struct Reglages {
 	bool collecte = false;	// noter les textes sans traduction
 	bool moteur = false;	// traduction en ligne des textes hors dictionnaire
 	std::string fournisseur = "mymemory";	// code de Fournisseurs[]
+	std::string interface;	// langue de l'outil lui-meme (code de Langues[]) ; "" = celle d'ArchiCAD
 };
 
 // Traducteurs en ligne (meme ordre que le sous-menu Options de RFIX/Tapir_TranslatorFix.grc)

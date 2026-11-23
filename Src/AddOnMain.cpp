@@ -21,6 +21,7 @@
 
 #include "TT_Charge.hpp"
 #include "TT_Coeur.hpp"
+#include "TT_Textes.hpp"
 #include "Json.hpp"
 
 #include <atomic>
@@ -32,17 +33,31 @@
 
 namespace {
 
-// Menus de RFIX/Tapir_TranslatorFix.grc (l'aide de chacun est a +100)
-constexpr short kMenuEntree	   = 32500;	// item i = TT::Langues[i - 1] (1 = detection automatique)
-constexpr short kMenuSortie	   = 32501;	// item i = TT::Langues[i - 1] (1 = aucune traduction)
-constexpr short kMenuCommandes = 32502;
+// Langue de l'outil : celle d'ArchiCAD (code de version FRA, GER...) sauf choix dans le menu.
+// Les menus sont enregistres une fois au demarrage dans la langue de ce moment (g_langueMenus) ;
+// les messages suivent tout de suite un changement (g_langueMessages).
+std::string g_versionArchicad;
+int			g_langueMenus = 1;
+int			g_langueMessages = 1;
+
+// Menus generes (RFIX/Tapir_TranslatorMenus.grc) : BaseMenus (langue) + 0..4, aides a + DecalageAides
+short kMenuEntree	  () { return TT::BaseMenus (g_langueMenus) + 0; }	// item i = TT::Langues[i - 1] (1 = detection automatique)
+short kMenuSortie	  () { return TT::BaseMenus (g_langueMenus) + 1; }	// item i = TT::Langues[i - 1] (1 = aucune traduction)
+short kMenuCommandes  () { return TT::BaseMenus (g_langueMenus) + 2; }
+short kMenuTraducteur () { return TT::BaseMenus (g_langueMenus) + 3; }	// item i = TT::Fournisseurs[i - 1]
+short kMenuInterface  () { return TT::BaseMenus (g_langueMenus) + 4; }	// 1 = comme ArchiCAD, i = TT::Langues[i - 1]
 constexpr Int32 kAutomatique   = 1;
 constexpr Int32 kCollecte	   = 2;
 constexpr Int32 kOuvrirDossier = 4;
 constexpr Int32 kEtat		   = 5;
-constexpr short kMenuTraducteur = 32503;	// item i = TT::Fournisseurs[i - 1]
 constexpr Int32 kCles		   = 7;
 constexpr Int32 kCorrections   = 8;
+
+// Langue de l'outil d'apres les reglages ("" = celle d'ArchiCAD)
+int LangueOutil (const std::string& choix)
+{
+	return TT::IndiceInterface (choix.empty () ? TT::LangueDepuisArchicad (g_versionArchicad) : choix);
+}
 
 std::wstring g_racine;
 TT::Reglages g_reglages;
@@ -74,10 +89,22 @@ void Rapport (const GS::UniString& ligne)
 	ACAPI_WriteReport ("%T", false, texte.ToPrintf ());
 }
 
-GS::UniString NomLangue (const std::string& code, const char* siVide)
+// Texte de l'interface dans la langue de l'outil
+GS::UniString T (TT::Texte t)
+{
+	return Uni (std::string (TT::Txt (t, g_langueMessages)));
+}
+
+// Lignes techniques (diagnostic, erreurs systeme) : en francais, sinon en anglais
+const char* FE (const char* fr, const char* en)
+{
+	return g_langueMessages == 0 ? fr : en;
+}
+
+GS::UniString NomLangue (const std::string& code, TT::Texte siVide)
 {
 	if (code.empty ())
-		return GS::UniString (siVide);
+		return T (siVide);
 	for (int i = 1; i < TT::NombreLangues; ++i) {
 		if (code == TT::Langues[i].code)
 			return Uni (std::string (TT::Langues[i].nom)) + " (" + Uni (code) + ")";
@@ -87,7 +114,7 @@ GS::UniString NomLangue (const std::string& code, const char* siVide)
 
 GS::UniString Langues ()
 {
-	return NomLangue (g_reglages.entree, "detection automatique") + " -> " + NomLangue (g_reglages.langue, "aucune traduction");
+	return NomLangue (g_reglages.entree, TT::M_AUTO) + " -> " + NomLangue (g_reglages.langue, TT::M_AUCUNE);
 }
 
 void Cocher (short menu, Int32 index, bool coche)
@@ -107,13 +134,15 @@ void Cocher (short menu, Int32 index, bool coche)
 void RafraichirCoches ()
 {
 	for (int i = 0; i < TT::NombreLangues; ++i) {
-		Cocher (kMenuEntree, i + 1, g_reglages.entree == TT::Langues[i].code);
-		Cocher (kMenuSortie, i + 1, g_reglages.langue == TT::Langues[i].code);
+		Cocher (kMenuEntree (), i + 1, g_reglages.entree == TT::Langues[i].code);
+		Cocher (kMenuSortie (), i + 1, g_reglages.langue == TT::Langues[i].code);
 	}
-	Cocher (kMenuCommandes, kAutomatique, g_reglages.moteur);
-	Cocher (kMenuCommandes, kCollecte, g_reglages.collecte);
+	Cocher (kMenuCommandes (), kAutomatique, g_reglages.moteur);
+	Cocher (kMenuCommandes (), kCollecte, g_reglages.collecte);
 	for (int i = 0; i < TT::NombreFournisseurs; ++i)
-		Cocher (kMenuTraducteur, i + 1, g_reglages.fournisseur == TT::Fournisseurs[i].code);
+		Cocher (kMenuTraducteur (), i + 1, g_reglages.fournisseur == TT::Fournisseurs[i].code);
+	for (int i = 0; i < TT::NombreLangues; ++i)
+		Cocher (kMenuInterface (), i + 1, g_reglages.interface == TT::Langues[i].code);
 }
 
 // Ligne ajoutee a journal.txt (utilisable hors du fil principal, contrairement au Rapport de session)
@@ -149,20 +178,20 @@ GS::UniString EtatCle (const std::string& code)
 {
 	std::string contenu;
 	if (!TT::LireFichier (TT::CheminCles (g_racine), contenu))
-		return "cles.json absent";
+		return FE ("cles.json absent", "cles.json missing");
 	Json::Valeur v;
 	if (!Json::Lecteur (contenu.compare (0, 3, "\xEF\xBB\xBF") == 0 ? contenu.substr (3) : contenu).Lire (v))
-		return "cles.json illisible (JSON invalide)";
+		return FE ("cles.json illisible (JSON invalide)", "cles.json unreadable (invalid JSON)");
 	const Json::Valeur* s = v.Champ (code);
 	if (code == "mymemory")
-		return s != nullptr && !s->Texte ("email").empty () ? "sans cle, e-mail renseigne" : "sans cle (quota anonyme)";
+		return s != nullptr && !s->Texte ("email").empty () ? T (TT::R_EMAIL_OK) : T (TT::R_SANS_CLE);
 	if (code == "libretranslate")
-		return s != nullptr && !s->Texte ("url").empty () ? "adresse renseignee" : "ADRESSE A RENSEIGNER";
+		return s != nullptr && !s->Texte ("url").empty () ? T (TT::R_ADRESSE_OK) : T (TT::R_ADRESSE_A_SAISIR);
 	if (s == nullptr || s->Texte ("cle").empty ())
-		return "CLE A RENSEIGNER";
+		return T (TT::R_CLE_A_SAISIR);
 	if (code == "microsoft" && s->Texte ("region").empty ())
-		return "cle renseignee, region vide";
-	return "cle renseignee";
+		return T (TT::R_CLE_OK) + FE (", region vide", ", region empty");
+	return T (TT::R_CLE_OK);
 }
 
 // -----------------------------------------------------------------------------
@@ -226,8 +255,8 @@ void ExtraireMoteur ()
 			continue;
 		const std::wstring ancien = TT::Joindre (base, nom);
 		TT::SupprimerDossier (ancien);
-		Rapport (GS::UniString (TT::DossierExiste (ancien) ? "ancienne version non supprimee (en cours d'utilisation) : "
-														   : "ancienne version supprimee : ") + Uni (ancien));
+		Rapport (GS::UniString (TT::DossierExiste (ancien) ? FE ("ancienne version non supprimee (en cours d'utilisation) : ", "old version not deleted (in use): ")
+														   : FE ("ancienne version supprimee : ", "old version deleted: ")) + Uni (ancien));
 	}
 }
 
@@ -313,7 +342,7 @@ void ArreterMoteur ()
 			TerminateProcess (g_moteur, 0);
 		CloseHandle (g_moteur);
 		g_moteur = nullptr;
-		Rapport ("moteur de traduction arrete");
+		Rapport (T (TT::R_MOTEUR_ARRETE));
 	}
 }
 
@@ -331,10 +360,9 @@ void LancerMoteur ()
 		}
 	}
 	if (exe.empty ()) {
-		Rapport ("ERREUR moteur de traduction introuvable. Emplacements cherches :");
+		Rapport (T (TT::R_MOTEUR_INTROUVABLE));
 		for (const std::wstring& e : EmplacementsMoteur ())
 			Rapport (GS::UniString ("  ") + Uni (e));
-		Rapport ("Les textes hors dictionnaire restent dans leur langue.");
 		return;
 	}
 	const std::wstring dossier = exe.substr (0, exe.find_last_of (L"\\/"));
@@ -342,7 +370,8 @@ void LancerMoteur ()
 	TT::CreerModeleCles (g_racine, erreurCles);
 	std::wstring ligne = L"\"" + exe + L"\" --port " + std::to_wstring (TT::PortMoteur) + L" --cles \"" + TT::CheminCles (g_racine) +
 						 L"\" --parent " + std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" +
-						 TT::Joindre (g_racine, L"journal.txt") + L"\"";
+						 TT::Joindre (g_racine, L"journal.txt") + L"\" --interface " +
+						 TT::DepuisUtf8 (TT::CodeInterface (g_langueMessages));
 	// modele hors ligne seulement si le .apx en porte un (option de build TT_MODELE_LOCAL)
 	const std::wstring modele = TT::Joindre (dossier, L"modele");
 	if (TT::DossierExiste (modele))
@@ -353,57 +382,62 @@ void LancerMoteur ()
 		g_ligneMoteur = ligne;
 		g_dossierLancement = dossier;
 		if (!DemarrerProcessus (erreur)) {
-			Rapport (GS::UniString ("ERREUR lancement du moteur (") + GS::ValueToUniString (static_cast<Int32> (erreur)) + ") : " + Uni (exe));
+			Rapport (GS::UniString (FE ("ERREUR lancement du moteur (", "ERROR starting the engine (")) +
+					 GS::ValueToUniString (static_cast<Int32> (erreur)) + ") : " + Uni (exe));
 			return;
 		}
 	}
 	g_moteurVoulu = true;
 	g_veille = std::thread (Veiller);
-	Rapport (GS::UniString ("moteur de traduction lance : ") + Uni (exe) + " (port " + GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) +
-			 ", traducteur " + NomFournisseur (g_reglages.fournisseur) + " : " + EtatCle (g_reglages.fournisseur) + ")");
+	Rapport (Uni (TT::TxtF (TT::R_MOTEUR_LANCE, g_langueMessages,
+							{ { "f", NomFournisseur (g_reglages.fournisseur).ToCStr (0, MaxUSize, CC_UTF8).Get () },
+							  { "e", EtatCle (g_reglages.fournisseur).ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 }
 
 void OuvrirCorrections ()
 {
 	std::wstring erreur;
 	if (!TT::CreerModeleCorrections (g_racine, erreur)) {
-		Rapport (GS::UniString ("ERREUR creation de corrections.json : ") + Uni (erreur));
+		Rapport (GS::UniString (FE ("ERREUR creation de corrections.json : ", "ERROR creating corrections.json: ")) + Uni (erreur));
 		return;
 	}
 	const std::wstring parametres = L"\"" + TT::CheminCorrections (g_racine) + L"\"";
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parametres.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString ("ERREUR ouverture de ") + Uni (TT::CheminCorrections (g_racine)));
+		Rapport (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CheminCorrections (g_racine)));
 	else
-		Rapport ("corrections.json ouvert dans le Bloc-notes : enregistrez, les fenetres ouvertes suivent aussitot");
+		Rapport (T (TT::R_CORRECTIONS_OUVERT));
 }
 
 void OuvrirCles ()
 {
 	std::wstring erreur;
 	if (!TT::CreerModeleCles (g_racine, erreur)) {
-		Rapport (GS::UniString ("ERREUR creation de cles.json : ") + Uni (erreur));
+		Rapport (GS::UniString (FE ("ERREUR creation de cles.json : ", "ERROR creating cles.json: ")) + Uni (erreur));
 		return;
 	}
 	const std::wstring parametres = L"\"" + TT::CheminCles (g_racine) + L"\"";
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parametres.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString ("ERREUR ouverture de ") + Uni (TT::CheminCles (g_racine)));
+		Rapport (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CheminCles (g_racine)));
 	else
-		Rapport (GS::UniString ("cles.json ouvert dans le Bloc-notes : enregistrez-le, la cle sert des la traduction suivante (") +
-				 Uni (TT::CheminCles (g_racine)) + ")");
+		Rapport (T (TT::R_CLES_OUVERT) + " (" + Uni (TT::CheminCles (g_racine)) + ")");
 }
 
 void Enregistrer ()
 {
 	std::wstring erreur;
 	if (g_reglages.entree == g_reglages.langue && !g_reglages.langue.empty ())
-		Rapport ("langue d'entree = langue de sortie : rien ne sera traduit.");
-	if (TT::EcrireReglages (g_racine, g_reglages, erreur))
-		Rapport (GS::UniString ("langues = ") + Langues () + ", collecte des textes non traduits = " +
-				 (g_reglages.collecte ? "oui" : "non") + ", traduction en ligne = " + (g_reglages.moteur ? "oui" : "non") + " (" + NomFournisseur (g_reglages.fournisseur) + " : " + EtatCle (g_reglages.fournisseur) + ")");
-	else
-		Rapport (GS::UniString ("ERREUR ecriture reglages.json : ") + Uni (erreur));
+		Rapport (T (TT::R_MEME_LANGUE));
+	if (TT::EcrireReglages (g_racine, g_reglages, erreur)) {
+		const GS::UniString enLigne = g_reglages.moteur
+			? T (TT::R_OUI) + " (" + NomFournisseur (g_reglages.fournisseur) + " : " + EtatCle (g_reglages.fournisseur) + ")"
+			: T (TT::R_NON);
+		Rapport (Uni (TT::TxtF (TT::R_REGLAGES, g_langueMessages,
+								{ { "l", Langues ().ToCStr (0, MaxUSize, CC_UTF8).Get () },
+								  { "o", enLigne.ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
+	} else
+		Rapport (GS::UniString (FE ("ERREUR ecriture reglages.json : ", "ERROR writing reglages.json: ")) + Uni (erreur));
 	RafraichirCoches ();
 }
 
@@ -411,7 +445,7 @@ void Demarrer ()
 {
 	g_racine = TT::DossierParDefaut ();
 	if (g_racine.empty ()) {
-		Rapport ("ERREUR : variable APPDATA absente, la traduction est inactive.");
+		Rapport (FE ("ERREUR : variable APPDATA absente, la traduction est inactive.", "ERROR: APPDATA variable missing, translation is inactive."));
 		return;
 	}
 	std::vector<std::wstring> journal;
@@ -421,61 +455,66 @@ void Demarrer ()
 
 	std::wstring pythonPath;
 	const bool env = TT::PreparerEnvironnement (g_racine, pythonPath);
-	Rapport (GS::UniString ("PYTHONPATH d'ArchiCAD = ") + Uni (pythonPath) + (env ? "" : "  (ERREUR SetEnvironmentVariable)"));
+	Rapport (GS::UniString ("PYTHONPATH = ") + Uni (pythonPath) + (env ? "" : "  (ERROR SetEnvironmentVariable)"));
 
 	g_reglages = TT::LireReglages (g_racine);
+	g_langueMessages = LangueOutil (g_reglages.interface);
 	g_pret = couche && env;
 	if (g_pret && g_reglages.moteur)
 		LancerMoteur ();
-	Rapport (GS::UniString ("version ") + TT::VersionAddOn + (g_pret ? ", active" : ", INACTIVE (voir les erreurs ci-dessus)") +
-			 ", langues = " + Langues ());
+	Rapport (Uni (TT::TxtF (g_pret ? TT::R_DEMARRAGE : TT::R_INACTIF, g_langueMessages,
+							{ { "v", TT::VersionAddOn }, { "l", Langues ().ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 }
 
 void Etat ()
 {
-	Rapport (GS::UniString ("=== etat, version ") + TT::VersionAddOn + " ===");
-	Rapport (GS::UniString ("dossier = ") + Uni (g_racine) + (g_pret ? "" : "  (couche NON installee)"));
-	Rapport (GS::UniString ("PYTHONPATH actuel = ") + Uni (TT::LireVariable (L"PYTHONPATH")));
+	const GS::UniString oui = T (TT::R_OUI), non = T (TT::R_NON);
+	Rapport (GS::UniString ("=== ") + T (TT::M_ETAT) + " " + TT::VersionAddOn + " ===");
+	Rapport (GS::UniString (FE ("dossier = ", "folder = ")) + Uni (g_racine) + (g_pret ? "" : FE ("  (couche NON installee)", "  (layer NOT installed)")));
+	Rapport (GS::UniString ("PYTHONPATH = ") + Uni (TT::LireVariable (L"PYTHONPATH")));
 	Rapport (GS::UniString ("TAPIR_TRANSLATOR_DIR = ") + Uni (TT::LireVariable (L"TAPIR_TRANSLATOR_DIR")));
-	Rapport (GS::UniString ("langues = ") + Langues () + ", collecte = " + (g_reglages.collecte ? "oui" : "non"));
+	Rapport (GS::UniString (FE ("langues = ", "languages = ")) + Langues () + ", " + T (TT::M_COLLECTE) + " = " + (g_reglages.collecte ? oui : non));
+	Rapport (T (TT::M_INTERFACE) + " = " + Uni (std::string (TT::NomInterface (g_langueMessages))) +
+			 (g_reglages.interface.empty () ? GS::UniString (" (") + T (TT::M_INTERFACE_AUTO) + " : " + Uni (g_versionArchicad) + ")" : GS::UniString ()));
 	for (int i = 0; i < TT::NombreFournisseurs; ++i)
-		Rapport (GS::UniString ("  ") + (g_reglages.fournisseur == TT::Fournisseurs[i].code ? "[choisi] " : "         ") +
-				 TT::Fournisseurs[i].nom + " : " + EtatCle (TT::Fournisseurs[i].code) + " (il faut : " + TT::Fournisseurs[i].besoin + ")");
-	Rapport (GS::UniString ("traduction en ligne = ") + (g_reglages.moteur ? "oui" : "non") + ", moteur " +
-			 (MoteurEnMarche () ? "en marche" : "arrete") + " (port " + GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) + ")");
+		Rapport (GS::UniString ("  ") + (g_reglages.fournisseur == TT::Fournisseurs[i].code ? "[x] " : "    ") +
+				 TT::Fournisseurs[i].nom + " : " + EtatCle (TT::Fournisseurs[i].code));
+	Rapport (T (TT::M_EN_LIGNE) + " = " + (g_reglages.moteur ? oui : non) + ", " + FE ("moteur ", "engine ") +
+			 (MoteurEnMarche () ? FE ("en marche", "running") : FE ("arrete", "stopped")) + " (port " +
+			 GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) + ")");
 	{
 		std::wstring empreinte;
 		std::vector<std::wstring> chemins;
 		if (TT::LireCharge (CheminApx (), empreinte, chemins)) {
-			Rapport (GS::UniString ("charge embarquee dans le .apx : empreinte ") + Uni (empreinte) + ", " +
-					 GS::ValueToUniString (static_cast<Int32> (chemins.size ())) + " fichier(s)");
+			Rapport (GS::UniString (FE ("charge embarquee dans le .apx : empreinte ", "payload embedded in the .apx: hash ")) + Uni (empreinte) + ", " +
+					 GS::ValueToUniString (static_cast<Int32> (chemins.size ())) + FE (" fichier(s)", " file(s)"));
 			for (size_t i = 0; i < chemins.size () && i < 12; ++i)
 				Rapport (GS::UniString ("  ") + Uni (chemins[i]));
 		} else
-			Rapport ("aucune charge embarquee dans le .apx");
+			Rapport (FE ("aucune charge embarquee dans le .apx", "no payload embedded in the .apx"));
 	}
 	for (const std::wstring& e : EmplacementsMoteur ())
-		Rapport (GS::UniString ("  moteur ") + (TT::FichierExiste (e) ? "present : " : "absent : ") + Uni (e));
-	Rapport (GS::UniString ("couche presente = ") +
-			 (TT::FichierExiste (TT::Joindre (TT::Joindre (g_racine, L"couche"), L"sitecustomize.py")) ? "oui" : "NON"));
+		Rapport (GS::UniString ("  ") + (TT::FichierExiste (e) ? "[x] " : "[ ] ") + Uni (e));
+	Rapport (GS::UniString ("sitecustomize.py = ") +
+			 (TT::FichierExiste (TT::Joindre (TT::Joindre (g_racine, L"couche"), L"sitecustomize.py")) ? oui : non));
 
 	const std::wstring dictionnaires = TT::Joindre (g_racine, L"dictionnaires");
 	const std::vector<std::wstring> dicos = TT::ListerJson (dictionnaires);
-	Rapport (GS::UniString ("dictionnaires (") + GS::ValueToUniString (static_cast<Int32> (dicos.size ())) + ") :");
+	Rapport (GS::UniString (FE ("dictionnaires (", "dictionaries (")) + GS::ValueToUniString (static_cast<Int32> (dicos.size ())) + ") :");
 	for (const std::wstring& d : dicos)
 		Rapport (GS::UniString ("  ") + Uni (d));
 
 	const std::wstring manquants = TT::Joindre (g_racine, L"manquants");
 	const std::vector<std::wstring> fichiers = TT::ListerJson (manquants);
-	Rapport (GS::UniString ("textes manquants (") + GS::ValueToUniString (static_cast<Int32> (fichiers.size ())) + " fichier(s)) :");
+	Rapport (GS::UniString (FE ("textes manquants (", "missing texts (")) + GS::ValueToUniString (static_cast<Int32> (fichiers.size ())) + ") :");
 	for (const std::wstring& f : fichiers) {
 		std::string contenu;
 		TT::LireFichier (TT::Joindre (manquants, f), contenu);
-		Rapport (GS::UniString ("  ") + Uni (f) + " : " + GS::ValueToUniString (static_cast<Int32> (TT::CompterVides (contenu))) + " texte(s) a traduire");
+		Rapport (GS::UniString ("  ") + Uni (f) + " : " + GS::ValueToUniString (static_cast<Int32> (TT::CompterVides (contenu))));
 	}
 
 	const std::vector<std::string> lignes = TT::DernieresLignes (TT::Joindre (g_racine, L"journal.txt"), 15);
-	Rapport (GS::UniString ("journal de la couche (") + GS::ValueToUniString (static_cast<Int32> (lignes.size ())) + " dernieres lignes) :");
+	Rapport (GS::UniString ("journal.txt (") + GS::ValueToUniString (static_cast<Int32> (lignes.size ())) + ") :");
 	for (const std::string& l : lignes)
 		Rapport (GS::UniString ("  ") + Uni (l));
 }
@@ -487,7 +526,7 @@ void OuvrirDossier ()
 	TT::CreerDossier (g_racine);
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", g_racine.c_str (), nullptr, nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Rapport (GS::UniString ("ERREUR ouverture du dossier ") + Uni (g_racine));
+		Rapport (GS::UniString (FE ("ERREUR ouverture du dossier ", "ERROR opening the folder ")) + Uni (g_racine));
 }
 
 GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
@@ -495,13 +534,13 @@ GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 	const short menu = menuParams->menuItemRef.menuResID;
 	const Int32 index = menuParams->menuItemRef.itemIndex;
 	const bool langue = index >= 1 && index <= TT::NombreLangues;
-	if (menu == kMenuEntree && langue) {
+	if (menu == kMenuEntree () && langue) {
 		g_reglages.entree = TT::Langues[index - 1].code;
 		Enregistrer ();
-	} else if (menu == kMenuSortie && langue) {
+	} else if (menu == kMenuSortie () && langue) {
 		g_reglages.langue = TT::Langues[index - 1].code;
 		Enregistrer ();
-	} else if (menu == kMenuTraducteur) {
+	} else if (menu == kMenuTraducteur ()) {
 		if (index >= 1 && index <= TT::NombreFournisseurs) {
 			g_reglages.fournisseur = TT::Fournisseurs[index - 1].code;
 			// choisir un traducteur active la traduction en ligne
@@ -515,7 +554,19 @@ GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 		} else if (index == kCorrections) {
 			OuvrirCorrections ();
 		}
-	} else if (menu == kMenuCommandes) {
+	} else if (menu == kMenuInterface () && langue) {
+		// 1 = comme ArchiCAD ("") ; messages et fenetre du moteur tout de suite, menus au prochain demarrage
+		g_reglages.interface = TT::Langues[index - 1].code;
+		g_langueMessages = LangueOutil (g_reglages.interface);
+		std::wstring erreur;
+		TT::EcrireReglages (g_racine, g_reglages, erreur);
+		Rapport (Uni (TT::TxtF (TT::R_INTERFACE, g_langueMessages, { { "l", TT::NomInterface (g_langueMessages) } })));
+		RafraichirCoches ();
+		if (g_moteurVoulu) {
+			ArreterMoteur ();
+			LancerMoteur ();	// le moteur reprend la langue (fenetre du quota MyMemory)
+		}
+	} else if (menu == kMenuCommandes ()) {
 		if (index == kAutomatique) {
 			g_reglages.moteur = !g_reglages.moteur;
 			if (g_reglages.moteur)
@@ -547,6 +598,8 @@ API_AddonType CheckEnvironment (API_EnvirParams* envir)
 	RSGetIndString (&envir->addOnInfo.name, 32000, 1, ACAPI_GetOwnResModule ());
 	RSGetIndString (&envir->addOnInfo.description, 32000, 2, ACAPI_GetOwnResModule ());
 	envir->addOnInfo.description += GS::UniString (" (") + TT::VersionAddOn + ")";
+	// langue de la version d'ArchiCAD (FRA, GER, INT...) : langue de l'outil par defaut
+	g_versionArchicad = envir->serverInfo.language.ToCStr (0, MaxUSize, CC_UTF8).Get ();
 	// Precharge : l'environnement doit etre en place avant le premier script Tapir.
 	return APIAddon_Preload;
 }
@@ -554,12 +607,19 @@ API_AddonType CheckEnvironment (API_EnvirParams* envir)
 
 GSErrCode RegisterInterface (void)
 {
-	// Trois menus sous le meme titre "Tapir Translator" : ArchiCAD les reunit en un menu principal
+	// langue des menus : choix enregistre, sinon celle d'ArchiCAD (fixee jusqu'au prochain demarrage)
+	const std::wstring racine = TT::DossierParDefaut ();
+	const TT::Reglages r = racine.empty () ? TT::Reglages () : TT::LireReglages (racine);
+	g_langueMenus = LangueOutil (r.interface);
+	g_langueMessages = g_langueMenus;
+	// Cinq menus sous le meme titre "Tapir Translator" : ArchiCAD les reunit en un menu principal
 	GSErrCode err = NoError;
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuEntree, kMenuEntree + 100, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuSortie, kMenuSortie + 100, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuTraducteur, kMenuTraducteur + 100, MenuCode_UserDef, MenuFlag_InsertIntoSame);
-	err |= ACAPI_MenuItem_RegisterMenu (kMenuCommandes, kMenuCommandes + 100, MenuCode_UserDef, MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuEntree (), kMenuEntree () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuSortie (), kMenuSortie () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuTraducteur (), kMenuTraducteur () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuCommandes (), kMenuCommandes () + TT::DecalageAides, MenuCode_UserDef,
+										MenuFlag_SeparatorBefore | MenuFlag_InsertIntoSame);
+	err |= ACAPI_MenuItem_RegisterMenu (kMenuInterface (), kMenuInterface () + TT::DecalageAides, MenuCode_UserDef, MenuFlag_InsertIntoSame);
 	return err;
 }
 
@@ -567,7 +627,7 @@ GSErrCode RegisterInterface (void)
 GSErrCode Initialize (void)
 {
 	GSErrCode err = NoError;
-	for (const short menu : { kMenuEntree, kMenuSortie, kMenuTraducteur, kMenuCommandes }) {
+	for (const short menu : { kMenuEntree (), kMenuSortie (), kMenuTraducteur (), kMenuCommandes (), kMenuInterface () }) {
 		const GSErrCode e = ACAPI_MenuItem_InstallMenuHandler (menu, MenuCommandHandler);
 		if (e != NoError) {
 			Rapport (GS::UniString ("ERREUR ACAPI_MenuItem_InstallMenuHandler (") + GS::ValueToUniString (static_cast<Int32> (menu)) +
