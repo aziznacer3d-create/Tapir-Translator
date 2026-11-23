@@ -42,7 +42,10 @@
 #include "Http.hpp"
 #include "Json.hpp"
 
+#include <atomic>
 #include <cstdlib>
+#include <mutex>
+#include <thread>
 
 namespace {
 
@@ -333,7 +336,7 @@ private:
 
 
 // --- MyMemory (one request per text) ------------------------------------------------------
-// MyMemory free API: no key, one GET request per text.
+// MyMemory free API: no key, one GET request per text, kParallel requests at a time.
 class MyMemory : public OnlineTranslator {
 public:
 	// email : optional address ("mymemory": {"email": ...}) sent as "de=",
@@ -350,38 +353,70 @@ public:
 		return l;
 	}
 
+	// Requests sent at the same time: one text per request and about 0.7 s each (new TLS
+	// connection every time), so a window of 300 texts took minutes one by one.
+	static constexpr size_t kParallel = 6;
+
 	bool Translate (const std::string& source, const std::string& target, const std::vector<std::string>& texts,
 				   std::vector<std::string>& results, std::string& error) override
 	{
-		results.clear ();
+		results.assign (texts.size (), std::string ());
+		error.clear ();
 		const std::string base = ServiceUrl ("mymemory", "https://api.mymemory.translated.net");
-		// The whole batch fails as soon as one text fails (the layer retries later)
-		for (const std::string& text : texts) {
-			// Step 1: GET /get?q=<text>&langpair=<src>|<dst> ("Autodetect" when
-			// the source is unknown), plus "&de=<email>" when configured
-			std::string url = base + "/get?q=" + Http::EncodeUrl (text) + "&langpair=" +
-							  Http::EncodeUrl ((source.empty () ? std::string ("Autodetect") : Code (source)) + "|" + Code (target));
-			if (!email_.empty ())
-				url += "&de=" + Http::EncodeUrl (email_);
-			const Http::Response r = Http::Request ("GET", url, {}, std::string ());
-			// Step 2: {"responseData": {"translatedText": ...}, "responseStatus": 200}
-			Json::Value v;
-			if (!Read (r, v, error))
-				return false;
-			const Json::Value* status_code = v.Field ("responseStatus");
-			const Json::Value* data = v.Field ("responseData");
-			const std::string translated = data != nullptr ? data->Text ("translatedText") : std::string ();
-			// Step 3: responseStatus may be a number or a string; a quota
-			// warning arrives with HTTP 200 as the "translation" itself
-			// (17 = length of "MYMEMORY WARNING:"). The error text keeps
-			// "MYMEMORY WARNING" so EngineMain.cpp can recognise it.
-			const bool ok = status_code != nullptr && ((status_code->kind == Json::Value::Number && status_code->number == 200.0) ||
-												  (status_code->kind == Json::Value::String && status_code->str == "200"));
-			if (!ok || translated.compare (0, 17, "MYMEMORY WARNING:") == 0) {
-				error = "MyMemory : " + (translated.empty () ? v.Text ("responseDetails") : translated.substr (0, 160));
-				return false;
+		const std::string pair = Http::EncodeUrl ((source.empty () ? std::string ("Autodetect") : Code (source)) + "|" + Code (target));
+		// The whole batch fails as soon as one text fails (the layer retries later).
+		// Each worker takes the next text; results[i] is written by one worker only.
+		std::atomic<size_t> next {0};
+		std::atomic<bool> failed {false};
+		std::mutex errorLock;
+		auto fail = [&] (const std::string& e) {
+			std::lock_guard<std::mutex> guard (errorLock);
+			// The quota warning wins: EngineMain.cpp looks for "MYMEMORY WARNING" to offer the e-mail
+			if (error.empty () || e.find ("MYMEMORY WARNING") != std::string::npos)
+				error = e;
+			failed = true;
+		};
+		auto work = [&] () {
+			for (size_t i = next++; i < texts.size () && !failed; i = next++) {
+				// Step 1: GET /get?q=<text>&langpair=<src>|<dst> ("Autodetect" when
+				// the source is unknown), plus "&de=<email>" when configured
+				std::string url = base + "/get?q=" + Http::EncodeUrl (texts[i]) + "&langpair=" + pair;
+				if (!email_.empty ())
+					url += "&de=" + Http::EncodeUrl (email_);
+				const Http::Response r = Http::Request ("GET", url, {}, std::string ());
+				// Step 2: {"responseData": {"translatedText": ...}, "responseStatus": 200}
+				Json::Value v;
+				std::string readError;
+				if (!Read (r, v, readError)) {
+					fail (readError);
+					return;
+				}
+				const Json::Value* status_code = v.Field ("responseStatus");
+				const Json::Value* data = v.Field ("responseData");
+				const std::string translated = data != nullptr ? data->Text ("translatedText") : std::string ();
+				// Step 3: responseStatus may be a number or a string; a quota
+				// warning arrives with HTTP 200 as the "translation" itself
+				// (17 = length of "MYMEMORY WARNING:"). The error text keeps
+				// "MYMEMORY WARNING" so EngineMain.cpp can recognise it.
+				const bool ok = status_code != nullptr && ((status_code->kind == Json::Value::Number && status_code->number == 200.0) ||
+													  (status_code->kind == Json::Value::String && status_code->str == "200"));
+				if (!ok || translated.compare (0, 17, "MYMEMORY WARNING:") == 0) {
+					fail ("MyMemory : " + (translated.empty () ? v.Text ("responseDetails") : translated.substr (0, 160)));
+					return;
+				}
+				results[i] = translated;
 			}
-			results.push_back (translated);
+		};
+		// Workers: kParallel - 1 threads plus this one
+		std::vector<std::thread> workers;
+		for (size_t k = 1; k < kParallel && k < texts.size (); ++k)
+			workers.emplace_back (work);
+		work ();
+		for (std::thread& t : workers)
+			t.join ();
+		if (failed) {
+			results.clear ();
+			return false;
 		}
 		return true;
 	}

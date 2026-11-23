@@ -125,6 +125,13 @@ Every **displayed** text is translated:
 - `Canvas` texts;
 - variables (`StringVar`) displayed by a Label or a Button;
 - titles and messages of `messagebox` and of the file dialogs;
+- `Text` widgets the script fills and then makes read-only (`state="disabled"`: result panels, help,
+  logs), line by line with their tags; `get` gives back the originals;
+- texts drawn into images with Pillow (buttons drawn by the script): the drawing of each image is
+  recorded and replayed in place when the language changes or an online translation arrives (a
+  centred text stays centred);
+- long and multi-line texts go online line by line, then sentence by sentence (600 characters at most
+  per request);
 - **Script UI pages** (HTML palettes shown with Tapir's `ShowScriptUI`, branch `script-ui-html`,
   not yet tested inside ArchiCAD): see below.
 
@@ -157,7 +164,12 @@ patches `http.client` (urllib, the archicad package) and `urllib3` (requests) an
 Not checked yet inside ArchiCAD: that its palette browser lets the page reach `127.0.0.1` (without
 that, the page only gets the translations known when it is shown).
 
-Never translated: what the user types (Entry, Text, free text of a Combobox). Never sent to the
+Never translated: the **names of the ArchiCAD project** (views, folders, layouts, stories...). The
+layer reads the answers of ArchiCAD's JSON API in the script's process and keeps their text values
+(never the error messages): a text equal to one of them is displayed as it is, and in a sentence only
+the pieces around such a name are translated; those names are never sent online.
+
+Never translated: what the user types (Entry, editable Text, free text of a Combobox). Never sent to the
 engine: paths, file names, identifiers and codes (`WALL-01`), numbers, texts that are already valid in
 the output language. A "/" between words ("Check / Element ID") is not taken for a path.
 
@@ -325,6 +337,10 @@ request. With `--serve` it then keeps the page open at the printed `PAGE` addres
 that page checks what is displayed, what the page's code reads back, the submitted result and the live
 language changes.
 
+tkinter extras: `python Tests/bench_tk_extras.py` runs `Tests/bench_tk_extras_tool.py` with a fake
+engine and a fake ArchiCAD (needs Pillow): read-only Text panel, button drawn with Pillow (compared
+pixel by pixel), long and multi-line texts, project names, live language change.
+
 ## Status (23/11/2026)
 
 - v0.1.0: tkinter layer, menu, collection.
@@ -346,9 +362,12 @@ language changes.
 - v0.9.0: term corrections window (rules editor, suggestions from the cache, preview) instead of Notepad.
 - v0.8.0: the whole code base in English (identifiers, files, folders, messages, data names), with an
   automatic conversion of the data of older versions.
-- Branch `script-ui-html` (prototype): Script UI pages of Tapir (HTML palettes) translated; bench
-  outside ArchiCAD OK, not yet tested inside ArchiCAD. Ready-to-install build for ArchiCAD 29:
-  `bin/Tapir_Translator_AC29.apx`.
+- Branch `script-ui-html` (prototype): Script UI pages of Tapir (HTML palettes) translated; read-only
+  Text panels, Pillow-drawn texts and long texts translated; project names never translated; queued
+  texts of a previous output language dropped; MyMemory asked 6 texts at a time. Benches outside
+  ArchiCAD OK; online translation of a tkinter tool seen working in ArchiCAD 29 with an earlier build,
+  this build not yet tested inside ArchiCAD (nor the Script UI pages).
+  Ready-to-install build for ArchiCAD 29: `bin/Tapir_Translator_AC29.apx`.
 - Not translated yet: HTML pages served by a script's own local server in a web browser, message-box
   buttons (Windows displays them in its own language).
 

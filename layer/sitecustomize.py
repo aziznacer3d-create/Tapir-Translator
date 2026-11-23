@@ -571,6 +571,8 @@ class _Engine:
         may be identifiers or CSS classes rather than displayed texts.
         Thread-safe (self.lock): Script UI pages are translated from other threads.
         """
+        if isinstance(text, str) and text.strip() in _project_data:
+            return text     # A name from the ArchiCAD project: never translated
         with self.lock:
             if request:
                 return self._translate_text(text)
@@ -608,10 +610,44 @@ class _Engine:
         if text not in self.seen_set:
             self.seen_set.add(text)
             self._vote(text)
-        # Step 4: dictionaries (exact, punctuation, templates, case, line by line).
-        r = self._translate(text, True)
+        # Step 4: dictionaries (exact, punctuation, templates, case, line by line). With
+        # online translation, a multi-line or very long text (beyond what the online
+        # translators accept) goes piece by piece instead: lines, then sentences, each one
+        # from the dictionaries or online (_pieces).
+        if self.auto.active_ and ("\n" in text or len(text) > _Automatic.MAX_TEXT):
+            r = self._translate(text, False)
+            if r is None:
+                return self._pieces(text)
+        else:
+            r = self._translate(text, True)
         if r is None and text.strip() in self.columns.get(self.language, ()):
             r = text    # Already valid in the output language ("Options", "Zone"...)
+        if r is None and self.auto.active_:
+            # Step 4b: a sentence holding names of the ArchiCAD project: only the pieces
+            # around the names go online, the names stay as they are.
+            parts = _project_split(text)
+            if parts is not None and len(parts) > 1:
+                pending, out = False, []
+                for piece, is_name in parts:
+                    if is_name or not any(c.isalpha() for c in piece):
+                        out.append(piece)
+                        continue
+                    t = self._translate_text(piece)
+                    if t == piece and piece not in self.cache:
+                        pending = True
+                    out.append(t)
+                result = "".join(out)
+                if not pending:
+                    self.cache[text] = result
+                return result
+        core = text.strip()
+        if r is None and core != text and self.auto.active_:
+            # Step 5a: online, only the core is sent (the translators drop the surrounding
+            # spaces, e.g. the indentation of a line of a read-only Text panel).
+            r = self._translate_text(core)
+            if r == core and core not in self.cache:
+                return text    # Waiting for the online translator: not cached
+            r = text[:len(text) - len(text.lstrip())] + r + text[len(text.rstrip()):]
         if r is None:
             # Step 5: sentence outside the dictionaries: online translation through the local
             # engine (if enabled). While pending, the original text stays displayed and is not
@@ -626,6 +662,36 @@ class _Engine:
         # Step 6: remember the final result for this text.
         self.cache[text] = r
         return r
+
+    def _pieces(self, text):
+        """Translate a multi-line or very long text piece by piece (self.lock held).
+
+        The lines, and the sentences of a line longer than _Automatic.MAX_TEXT, are
+        translated one by one (_translate_text: dictionaries, then online); separators
+        are kept. The result is cached only when no piece is still waiting for the online
+        translator (it is computed again when the translations arrive).
+        """
+        import re
+        limit = _Automatic.MAX_TEXT
+        pending = False
+        lines = []
+        for line in text.split("\n"):
+            chunks = re.split(r"((?<=[.;!?:])\s+)", line) if len(line) > limit else [line]
+            out = []
+            for k, chunk in enumerate(chunks):
+                # Odd items are the separators kept by re.split; a sentence still too long stays.
+                if k % 2 == 1 or not chunk.strip() or len(chunk) > limit:
+                    out.append(chunk)
+                    continue
+                r = self._translate_text(chunk)
+                if r == chunk and chunk not in self.cache:
+                    pending = True   # Not cached: waiting for the online translator
+                out.append(r)
+            lines.append("".join(out))
+        result = "\n".join(lines)
+        if not pending:
+            self.cache[text] = result
+        return result
 
     def _translate(self, text, lines):
         """Dictionary-only translation of one text; returns None if unknown.
@@ -813,6 +879,7 @@ class _Automatic(object):
     """
 
     LOT = 16                  # Maximum number of texts per request to the engine
+    MAX_TEXT = 600            # Longest text sent at once (longer ones go by sentences, see _Engine._pieces)
     OUTAGE_PAUSE = 15.0        # Engine/service unavailable: new attempt after this delay (s)
     DETECTION_DELAY = 2.0     # Script language unknown: wait this long before sending without a language (s)
 
@@ -857,6 +924,17 @@ class _Automatic(object):
         self.provider = provider or "mymemory"
         if port:
             self.port = port
+        # Texts still waiting for another output language or translator are no longer
+        # displayed: drop them, so the texts of the new language are sent at once.
+        with self.lock:
+            kept = [q for q in self.pending if q[0] == self.provider and q[2] == self.target]
+            if len(kept) != len(self.pending):
+                for q in self.pending:
+                    if q[0] != self.provider or q[2] != self.target:
+                        self.requests.discard(q)
+                self.pending[:] = kept
+                if not kept:
+                    self.event.clear()
         if active_ and self.thread_ is None:
             import threading
             self.thread_ = threading.Thread(target=self._work, name="TapirTranslatorAuto", daemon=True)
@@ -877,7 +955,7 @@ class _Automatic(object):
         import re
         t = text.strip()
         # Step 1: length and letter count.
-        if len(t) < 2 or len(t) > 600 or sum(1 for c in t if c.isalpha()) < 2:
+        if len(t) < 2 or len(t) > _Automatic.MAX_TEXT or sum(1 for c in t if c.isalpha()) < 2:
             return False
         # Step 2: paths, URLs, e-mail addresses, file names.
         if re.search(r"\\|\S/|/\S|://|@|\.(py|json|txt|csv|pln|pla|tpl|ifc|dwg|dxf|xlsx?|gsm|png|jpe?g|pdf)\b", t, re.I):
@@ -1174,6 +1252,8 @@ class _Proxy(object):
         self._input_vars = {}
         # Tk class of each widget path met by a list command (cached "winfo class")
         self._classes = {}
+        # Read-only Text widgets: path -> {displayed line or piece: original}
+        self._texts = {}
 
     def __getattr__(self, name):
         """Forward every attribute not defined here to the real interpreter."""
@@ -1574,6 +1654,106 @@ class _Proxy(object):
             return None
         return False
 
+    # --- Text widgets made read-only by the script ------------------------------------------
+    # A Text widget is a typing area: the user's text is never touched. But a script that
+    # writes its own text into it and then sets "-state disabled" uses it as a display
+    # (result panels, help, logs): at that moment its content is translated, line by line
+    # (piece by piece when a line mixes tags). "get" gives the originals back.
+    _TEXT_MAX_LINES = 500     # Beyond, only the first lines are translated (big logs)
+
+    def _text_widget(self, argv, path, sub, n):
+        """Handle the Text commands: configure -state disabled (translate), get (originals).
+
+        Output: None, a converter, or False (generic handling continues).
+        """
+        if sub == "configure" and n >= 4:
+            for i in range(2, n - 1, 2):
+                if argv[i] == "-state" and str(argv[i + 1]) == "disabled":
+                    self._text_translate(path)
+            return False
+        if sub == "get" and n >= 3 and self._texts.get(path):
+            shown = self._texts[path]
+
+            def originals(r):
+                if not isinstance(r, str):
+                    return r
+                return "\n".join(shown.get(line, line) for line in r.split("\n"))
+            return originals
+        return False
+
+    def _text_runs(self, path, line):
+        """Pieces of line 'line' of a Text widget with the same tags: [(start index, text, tags)]."""
+        real = self._real
+        start = "%d.0" % line
+        current = set(str(t) for t in self._as_tuple(real.call(path, "tag", "names", start)))
+        runs = []
+        items = self._as_tuple(real.call(path, "dump", "-text", "-tag", start, "%d.end" % line))
+        for k in range(0, len(items) - 2, 3):
+            key, value, index = items[k], items[k + 1], items[k + 2]
+            if key == "tagon":
+                current.add(value)
+            elif key == "tagoff":
+                current.discard(value)
+            elif key == "text" and value:
+                tags = tuple(sorted(current))
+                if runs and runs[-1][2] == tags:
+                    runs[-1] = (runs[-1][0], runs[-1][1] + value, tags)
+                else:
+                    runs.append((index, value, tags))
+        return runs
+
+    def _text_translate(self, path, only_disabled=False):
+        """Translate the content of the Text widget 'path' in place.
+
+        Each line (or each piece of a line with its own tags) is replaced by the
+        translation of its original; the tags are kept. Used when the script makes the
+        widget read-only, and again by reapply() (language change, online arrivals) with
+        only_disabled=True: a widget the script made editable again is left alone.
+        """
+        real = self._real
+        disabled = str(real.call(path, "cget", "-state")) == "disabled"
+        if only_disabled and not disabled:
+            return
+        if disabled:
+            real.call(path, "configure", "-state", "normal")
+        try:
+            self._text_lines(path)
+        finally:
+            if disabled:
+                real.call(path, "configure", "-state", "disabled")
+
+    def _text_lines(self, path):
+        """Body of _text_translate (the widget is in the normal state)."""
+        real = self._real
+        shown = self._texts.setdefault(path, {})
+        if len(shown) > 5000:
+            shown.clear()
+        last = int(str(real.call(path, "index", "end")).split(".")[0]) - 1
+        for line in range(1, min(last, self._TEXT_MAX_LINES) + 1):
+            text = str(real.call(path, "get", "%d.0" % line, "%d.end" % line))
+            if not any(c.isalpha() for c in text):
+                continue
+            runs = self._text_runs(path, line)
+            if len(runs) <= 1:
+                runs = [("%d.0" % line, text, runs[0][2] if runs else ())]
+            # From the last piece to the first: earlier indexes stay valid.
+            new_line = []
+            for index, piece, tags in reversed(runs):
+                original = shown.get(piece, piece)
+                new = _engine.translate(original) if any(c.isalpha() for c in piece) else piece
+                new_line.insert(0, new)
+                if new != piece:
+                    end_ = "%s+%dc" % (index, len(piece))
+                    real.call(path, "delete", index, end_)
+                    real.call(path, "insert", index, new, tags)
+                if new != original:
+                    shown[new] = original
+            if len(runs) > 1:
+                whole = "".join(new_line)
+                originals = "".join(shown.get(p, p) for p in new_line)
+                if whole != originals:
+                    shown[whole] = originals
+
     def _sub_command(self, argv, path, sub, n):
         """Handle ".path sub-command ..." for the sub-commands that carry displayed texts.
 
@@ -1587,7 +1767,8 @@ class _Proxy(object):
         # sub-commands they use, so that other widgets never pay the "winfo class" call
         if sub in ("insert", "item", "set", "get", "configure", "cget"):
             cls = self._class(path)
-            handler = {"Treeview": self._treeview, "Listbox": self._listbox, "TCombobox": self._combobox}.get(cls)
+            handler = {"Treeview": self._treeview, "Listbox": self._listbox, "TCombobox": self._combobox,
+                       "Text": self._text_widget}.get(cls)
             if handler is not None:
                 res = handler(argv, path, sub, n)
                 if res is not False:
@@ -1931,6 +2112,12 @@ class _Proxy(object):
                 v[1] = new
             except Exception:
                 self._combos.pop(path, None)
+        # Part 6: read-only Text widgets (only while still read-only).
+        for path in list(self._texts.keys()):
+            try:
+                self._text_translate(path, only_disabled=True)
+            except Exception:
+                self._texts.pop(path, None)
 
 
 # =====================================================================================
@@ -2471,8 +2658,6 @@ def _page_server():
     if _pages is None and not _pages_failed:
         try:
             _pages = _PageServer()
-            import atexit
-            atexit.register(_pages_flush)
             _log("Script UI page server on 127.0.0.1:%d" % _pages.port)
         except Exception as e:
             _pages_failed = True
@@ -2480,11 +2665,12 @@ def _page_server():
     return _pages
 
 
-def _pages_flush():
-    """At exit: let the online translations asked for the pages arrive (at most 3 s).
+def _flush_online():
+    """At exit: let the online translations already asked for arrive (at most 3 s).
 
-    A script may show its page and end at once; waiting a little puts the translations
-    in the cache, so the page is translated the next time it is shown.
+    A script may show its page and end at once, and an image drawn with a translation
+    still waiting keeps its original text; waiting a little puts the translations in
+    the cache, so they are displayed the next time.
     """
     try:
         import time
@@ -2589,11 +2775,93 @@ def _page_request(args, kwargs):
     return args, kwargs
 
 
+# =====================================================================================
+#  Project data: the names ArchiCAD sends are never translated
+# =====================================================================================
+#
+# Views, folders, layouts, stories... have the names the user gave them in ArchiCAD; a
+# tool lists them, shows them in its panels and sentences. Those names must stay as they
+# are. They reach the script in the answers of ArchiCAD's JSON API (Tapir commands
+# included), read in this very process: the layer reads those answers too (http.client)
+# and keeps every text value (never the error messages). A text equal to one of them is
+# never translated; in a sentence sent online, only the pieces around such a name are.
+
+_project_data = set()     # Texts received from ArchiCAD (stripped)
+_project_regex = None     # Compiled pattern of the names searched in sentences (see _project_split)
+_project_regex_size = -1  # Size of _project_data when _project_regex was built
+
+
+def _project_collect(raw):
+    """Add the text values of an answer of ArchiCAD's JSON API to _project_data."""
+    import json
+    try:
+        data = json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
+    except Exception:
+        return
+    found = set()
+    stack = [data]
+    while stack:
+        v = stack.pop()
+        if isinstance(v, dict):
+            for k, x in v.items():
+                if "error" not in str(k).lower() and "message" not in str(k).lower():
+                    stack.append(x)
+        elif isinstance(v, list):
+            stack.extend(v)
+        elif isinstance(v, str):
+            t = v.strip()
+            if 2 <= len(t) <= 300 and any(c.isalpha() for c in t):
+                found.add(t)
+    new = found - _project_data
+    if new and _engine is not None:
+        with _engine.lock:
+            _project_data.update(new)
+            for t in new:
+                _engine.cache.pop(t, None)
+
+
+def _project_split(text):
+    """Split 'text' around the project names it contains: [(piece, is_name)], or None.
+
+    Only names of 4 characters or more are searched, whole words, case-sensitive (a short
+    name such as "Plan" would cut ordinary sentences).
+    """
+    global _project_regex, _project_regex_size
+    import re
+    if len(_project_data) != _project_regex_size:
+        names = sorted((t for t in _project_data if len(t) >= 4), key=len, reverse=True)
+        _project_regex = re.compile(r"(?<!\w)(?:%s)(?!\w)" % "|".join(re.escape(t) for t in names)) if names else None
+        _project_regex_size = len(_project_data)
+    if _project_regex is None:
+        return None
+    parts, last = [], 0
+    for m in _project_regex.finditer(text):
+        if m.start() > last:
+            parts.append((text[last:m.start()], False))
+        parts.append((m.group(0), True))
+        last = m.end()
+    if not parts:
+        return None
+    if last < len(text):
+        parts.append((text[last:], False))
+    return parts
+
+
+def _is_api_request(args, kwargs):
+    """True if the body of an HTTPConnection.request is a command of ArchiCAD's JSON API."""
+    body = args[0] if args else kwargs.get("body")
+    if isinstance(body, str):
+        body = body.encode("utf-8", "replace")
+    return isinstance(body, (bytes, bytearray)) and b'"command"' in body and b'"API.' in body
+
+
 def _hook_http(module):
     """Patch module.HTTPConnection.request (http.client, urllib3.connection).
 
     Every request goes through _page_request; only ShowScriptUI commands are changed.
     urllib3 1.x inherits the request of http.client (already patched: nothing to do).
+    For http.client, the answers to ArchiCAD's JSON API commands are also read to
+    collect the project names (see _project_collect).
     """
     cls = getattr(module, "HTTPConnection", None)
     original = getattr(cls, "request", None) if cls is not None else None
@@ -2604,6 +2872,7 @@ def _hook_http(module):
     @functools.wraps(original)
     def request(self, method, url, *args, **kwargs):
         try:
+            self._tapir_api = _is_api_request(args, kwargs)
             args, kwargs = _page_request(args, kwargs)
         except Exception as e:
             _log("Script UI page not translated: %r" % e)
@@ -2611,6 +2880,336 @@ def _hook_http(module):
 
     request._tapir_translator = True
     cls.request = request
+    if module.__name__ != "http.client":
+        return
+
+    # The answer of an API command: its body is collected while the script reads it.
+    getresponse_original = cls.getresponse
+
+    @functools.wraps(getresponse_original)
+    def getresponse(self, *args, **kwargs):
+        response = getresponse_original(self, *args, **kwargs)
+        try:
+            if self.__dict__.pop("_tapir_api", False):
+                response._tapir_chunks = []
+        except Exception:
+            pass
+        return response
+    cls.getresponse = getresponse
+
+    response_cls = module.HTTPResponse
+    read_original = response_cls.read
+
+    @functools.wraps(read_original)
+    def read(self, amt=None):
+        data = read_original(self, amt)
+        chunks = self.__dict__.get("_tapir_chunks")
+        if chunks is not None:
+            try:
+                if data:
+                    chunks.append(bytes(data))
+                if amt is None or not data or len(data) < amt or self.isclosed():
+                    del self._tapir_chunks
+                    _project_collect(b"".join(chunks))
+            except Exception as e:
+                _log("project names not read: %r" % e)
+        return data
+    response_cls.read = read
+
+
+# =====================================================================================
+#  Texts drawn into images with Pillow (buttons drawn by the script)
+# =====================================================================================
+
+#
+# Some scripts draw their buttons as images (rounded "capsules"): Tk then only sees a
+# picture, the text never goes through the Tcl proxy. While a Tk window of the script is
+# open (a script that renders images to files without a window is not affected):
+#   1. the text given to ImageDraw.text / multiline_text, and to the measuring methods
+#      (textbbox, multiline_textbbox, textlength, so that the script centres the
+#      translated text), is translated;
+#   2. the "recipe" of every image made by Image.new is recorded: the drawing calls
+#      (with the ORIGINAL texts), then resize / copy. An ImageTk.PhotoImage made from an
+#      image whose recipe holds texts is remembered;
+#   3. when the displayed texts must change (language, dictionaries, online translations
+#      arrived: same revision as the Tk windows), _pil_refresh() replays the recipe with
+#      the new translations and pastes the result into the same PhotoImage: the button
+#      changes in place. A text that was centred in its image stays centred.
+# An image changed by anything not recorded (paste, putpixel...) or not made by
+# Image.new is never replayed: it keeps what it was drawn with.
+
+_PIL_DRAWING = ("arc", "bitmap", "chord", "circle", "ellipse", "line", "pieslice", "point", "polygon",
+                "rectangle", "regular_polygon", "rounded_rectangle", "shape", "text", "multiline_text")
+# Position of the text among the arguments after self, for the text methods.
+_PIL_TEXT_POSITION = {"text": 1, "multiline_text": 1, "textbbox": 1, "multiline_textbbox": 1, "textlength": 0}
+# Image methods that change an image in place without being recorded: its recipe is dropped.
+_PIL_MUTATING = ("paste", "putpixel", "putalpha", "putdata", "alpha_composite", "frombytes", "putpalette",
+                 "thumbnail")
+_pil_original = {}       # Name -> unpatched function, used by the replay
+_pil_photos = []         # [(weak reference to an ImageTk.PhotoImage, recipe)]
+_pil_state = None        # threading.local(): "on" while inside a patched Pillow call (nested calls pass through)
+# The recipe of an image {"base", "ops", "broken"} is kept on the image itself, in the
+# attribute _tapir_recipe (PIL images cannot be dictionary keys: they compare by content).
+
+
+def _pil_init():
+    """Create the shared state of the Pillow hooks (once)."""
+    global _pil_state
+    if _pil_state is None:
+        import threading
+        _pil_state = threading.local()
+
+
+def _pil_recipe(image):
+    """The recipe recorded for a PIL image, or None (never raises)."""
+    try:
+        return image.__dict__.get("_tapir_recipe")
+    except Exception:
+        return None
+
+
+def _pil_outer(function):
+    """Run function() as an outermost Pillow call (inner calls of Pillow are not recorded)."""
+    _pil_state.on = True
+    try:
+        return function()
+    finally:
+        _pil_state.on = False
+
+
+def _hook_pil_image(module):
+    """Patch PIL.Image: Image.new starts a recipe, resize / copy carry it, in-place changes drop it."""
+    if getattr(module, "_tapir_translator", False):
+        return
+    module._tapir_translator = True
+    _pil_init()
+    import functools
+    cls = module.Image
+    new_original = module.new
+    _pil_original["new"] = new_original
+
+    @functools.wraps(new_original)
+    def new(*args, **kwargs):
+        if getattr(_pil_state, "on", False) or not _proxies:
+            return new_original(*args, **kwargs)
+        image = _pil_outer(lambda: new_original(*args, **kwargs))
+        try:
+            image._tapir_recipe = {"base": (args, kwargs), "ops": [], "broken": False}
+        except Exception:
+            pass
+        return image
+    module.new = new
+
+    def derived(name):
+        original = getattr(cls, name)
+        _pil_original[name] = original
+
+        @functools.wraps(original)
+        def method(self, *args, **kwargs):
+            if getattr(_pil_state, "on", False):
+                return original(self, *args, **kwargs)
+            result = _pil_outer(lambda: original(self, *args, **kwargs))
+            recipe = _pil_recipe(self)
+            if recipe is not None and not recipe["broken"] and result is not None:
+                try:
+                    result._tapir_recipe = {"base": recipe["base"], "broken": False,
+                                            "ops": recipe["ops"] + [{"kind": name, "args": args, "kwargs": kwargs}]}
+                except Exception:
+                    pass
+            return result
+        setattr(cls, name, method)
+    for name in ("resize", "copy"):
+        derived(name)
+
+    def mutating(name):
+        original = getattr(cls, name, None)
+        if original is None:
+            return
+
+        @functools.wraps(original)
+        def method(self, *args, **kwargs):
+            if not getattr(_pil_state, "on", False):
+                recipe = _pil_recipe(self)
+                if recipe is not None:
+                    recipe["broken"] = True
+            return original(self, *args, **kwargs)
+        setattr(cls, name, method)
+    for name in _PIL_MUTATING:
+        mutating(name)
+
+
+def _hook_pil(module):
+    """Patch PIL.ImageDraw.ImageDraw: drawn texts translated, drawing calls recorded."""
+    cls = getattr(module, "ImageDraw", None)
+    if cls is None or getattr(cls, "_tapir_translator", False):
+        return
+    cls._tapir_translator = True
+    _pil_init()
+    import functools
+
+    init_original = cls.__init__
+
+    @functools.wraps(init_original)
+    def init(self, im, mode=None, *args, **kwargs):
+        init_original(self, im, mode, *args, **kwargs)
+        self._tapir_mode = mode      # Drawing mode, needed to draw again (replay)
+    cls.__init__ = init
+
+    def wrap(name):
+        original = getattr(cls, name, None)
+        if original is None:
+            return
+        _pil_original[name] = original
+        position = _PIL_TEXT_POSITION.get(name)
+
+        @functools.wraps(original)
+        def method(self, *args, **kwargs):
+            if getattr(_pil_state, "on", False) or not _proxies:
+                return original(self, *args, **kwargs)
+            source = None
+            try:
+                if position is not None:
+                    if len(args) > position and isinstance(args[position], str):
+                        source = args[position]
+                        args = args[:position] + (_engine.translate(source),) + args[position + 1:]
+                    elif isinstance(kwargs.get("text"), str):
+                        source = kwargs["text"]
+                        kwargs = dict(kwargs, text=_engine.translate(source))
+                if name in _PIL_DRAWING:
+                    recipe = _pil_recipe(getattr(self, "_image", None))
+                    if recipe is not None and not recipe["broken"]:
+                        recipe["ops"].append({"kind": "draw", "name": name, "mode": getattr(self, "_tapir_mode", None),
+                                              "args": args, "kwargs": kwargs, "original": source,
+                                              "shown": args[position] if source is not None and len(args) > position
+                                              else kwargs.get("text")})
+            except Exception as e:
+                _log("drawn text: %r" % e)
+            return _pil_outer(lambda: original(self, *args, **kwargs))
+        setattr(cls, name, method)
+
+    for name in set(_PIL_DRAWING) | set(_PIL_TEXT_POSITION):
+        wrap(name)
+
+
+def _hook_pil_tk(module):
+    """Patch PIL.ImageTk.PhotoImage: remember the photos made from images with drawn texts."""
+    cls = getattr(module, "PhotoImage", None)
+    if cls is None or getattr(cls, "_tapir_translator", False):
+        return
+    cls._tapir_translator = True
+    _pil_init()
+    import functools
+    import weakref
+    init_original = cls.__init__
+    paste_original = cls.paste
+    _pil_original["photo_paste"] = paste_original
+
+    def remember(photo, image):
+        # Forget what this photo showed before, then remember its new recipe (texts only).
+        _pil_photos[:] = [e for e in _pil_photos if e[0]() is not None and e[0]() is not photo]
+        recipe = _pil_recipe(image)
+        if recipe is not None and not recipe["broken"] and any(op.get("original") for op in recipe["ops"]):
+            _pil_photos.append((weakref.ref(photo), recipe))
+
+    @functools.wraps(init_original)
+    def init(self, image=None, size=None, **kw):
+        init_original(self, image, size, **kw)
+        try:
+            if _proxies and image is not None and not isinstance(image, str):
+                remember(self, image)
+        except Exception as e:
+            _log("drawn image: %r" % e)
+    cls.__init__ = init
+
+    @functools.wraps(paste_original)
+    def paste(self, im, *args, **kwargs):
+        # The script shows another image in this photo: follow it.
+        try:
+            if _proxies:
+                remember(self, im)
+        except Exception:
+            pass
+        return paste_original(self, im, *args, **kwargs)
+    cls.paste = paste
+
+
+def _pil_centre(draw, op, size_, new):
+    """xy for 'new' in place of op["shown"]: the same centre if the text was centred in its image.
+
+    size_ = (width, height) of the image being drawn.
+    """
+    args, kwargs = op["args"], op["kwargs"]
+    names = ("xy", "text", "fill", "font", "anchor", "spacing", "align", "direction", "features", "language",
+             "stroke_width", "stroke_fill", "embedded_color")
+    params = dict(zip(names, args))
+    params.update(kwargs)
+    xy = params.get("xy")
+    if not isinstance(xy, (tuple, list)) or len(xy) != 2:
+        return xy
+    measure = _pil_original.get("multiline_textbbox" if op["name"] == "multiline_text" else "textbbox")
+    keys = ("font", "anchor", "spacing", "align", "direction", "features", "language", "stroke_width",
+            "embedded_color", "font_size")
+    options = dict((k, params[k]) for k in keys if k in params)
+    # Measured at the origin, as scripts do to centre a text (no rounding of xy on the way).
+    # Each direction separately: a text centred in it stays centred, otherwise it keeps
+    # its position (left aligned label, text at the top...).
+    old = measure(draw, (0, 0), op["shown"], **options)
+    now = measure(draw, (0, 0), new, **options)
+    result = list(xy)
+    for axis, size in ((0, size_[0]), (1, size_[1])):
+        low, high = old[axis], old[axis + 2]
+        if abs(xy[axis] + (low + high) / 2.0 - size / 2.0) <= max(2.0, size * 0.03):
+            result[axis] = xy[axis] + ((low + high) - (now[axis] + now[axis + 2])) / 2.0
+    return tuple(result)
+
+
+def _pil_replay(recipe):
+    """Draw the image of 'recipe' again with the current translations (returns the new image)."""
+    image_draw = sys.modules["PIL.ImageDraw"]
+    args, kwargs = recipe["base"]
+    image = _pil_original["new"](*args, **kwargs)
+    draws = {}
+    for op in recipe["ops"]:
+        if op["kind"] != "draw":
+            image = _pil_original[op["kind"]](image, *op["args"], **op["kwargs"])
+            draws = {}
+            continue
+        draw = draws.get(op["mode"])
+        if draw is None:
+            draw = draws[op["mode"]] = image_draw.Draw(image, op["mode"])
+        args, kwargs = op["args"], op["kwargs"]
+        if op.get("original") is not None:
+            new = _engine.translate(op["original"])
+            if new != op["shown"]:
+                xy = _pil_centre(draw, op, image.size, new)
+                position = _PIL_TEXT_POSITION[op["name"]]
+                if len(args) > position:
+                    args = (xy,) + args[1:position] + (new,) + args[position + 1:]
+                else:
+                    kwargs = dict(kwargs, text=new)
+                    args = (xy,) + tuple(args[1:])
+                op["args"], op["kwargs"], op["shown"] = args, kwargs, new
+        _pil_outer(lambda: _pil_original[op["name"]](draw, *args, **kwargs))
+    return image
+
+
+def _pil_refresh():
+    """Draw again, in place, the photos whose texts are translated differently now (Tk thread)."""
+    for entry in list(_pil_photos):
+        photo = entry[0]()
+        recipe = entry[1]
+        if photo is None:
+            _pil_photos.remove(entry)
+            continue
+        try:
+            texts = [op for op in recipe["ops"] if op.get("original") is not None]
+            if all(_engine.translate(op["original"]) == op["shown"] for op in texts):
+                continue
+            image = _pil_replay(recipe)
+            _pil_original["photo_paste"](photo, image)
+        except Exception as e:
+            _log("drawn image not updated: %r" % e)
+            _pil_photos.remove(entry)
 
 
 # =====================================================================================
@@ -2638,6 +3237,7 @@ def _watch(root):
                 _tk_revision = revision
                 for inter in list(_proxies):
                     inter.reapply()
+                _pil_refresh()    # Images with drawn texts (buttons drawn with Pillow)
             # Step 4: save the missing texts collected so far (no-op if nothing new).
             _engine.write_missing()
         except Exception as e:
@@ -2760,7 +3360,8 @@ class _Hook(object):
 
 # Modules patched when they are imported: tkinter (windows), http.client and urllib3
 # (requests that carry a Script UI page, see _hook_http).
-_HOOKS = {"tkinter": _hook_up, "http.client": _hook_http, "urllib3.connection": _hook_http}
+_HOOKS = {"tkinter": _hook_up, "http.client": _hook_http, "urllib3.connection": _hook_http,
+          "PIL.Image": _hook_pil_image, "PIL.ImageDraw": _hook_pil, "PIL.ImageTk": _hook_pil_tk}
 
 
 def _install():
@@ -2781,6 +3382,7 @@ def _install():
     sys.meta_path.insert(0, _Hook())
     import atexit
     atexit.register(lambda: _engine.write_missing())
+    atexit.register(_flush_online)    # Runs first (atexit: last registered, first run)
 
 
 def _chain():
