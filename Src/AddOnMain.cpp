@@ -63,6 +63,8 @@ int			g_langueMessages = 1;
 // First menu registration error (reported by Initialize, since RegisterInterface must not fail).
 GSErrCode g_erreurMenus = NoError;
 short	  g_menuEnErreur = 0;
+// Result of every menu registration ("32100=0 32101=0 ..."), written to journal.txt by Initialize.
+std::string g_traceMenus;
 
 short kMenuEntree	  () { return TT::BaseMenus (g_langueMenus) + 0; }	// input language: item i = TT::Langues[i - 1] (1 = automatic detection)
 short kMenuSortie	  () { return TT::BaseMenus (g_langueMenus) + 1; }	// output language: item i = TT::Langues[i - 1] (1 = no translation)
@@ -115,14 +117,19 @@ GS::UniString Uni (const std::string& utf8)
 	return GS::UniString (utf8.c_str (), CC_UTF8);
 }
 
+void Journal (const std::string& ligne);	// defined below (journal.txt)
+
 // Writes one line to ArchiCAD's Session Report, prefixed with "Tapir Translator : ", so that
 // the user can copy the whole trace. Main thread only (ArchiCAD API call).
 void Rapport (const GS::UniString& ligne)
 {
-	// The "%T" format passes the line through unchanged: accented characters are kept and a '%'
-	// inside a file path is not interpreted as a printf directive.
+	// Step 1: the "%T" format passes the line through unchanged: accented characters are kept and
+	// a '%' inside a file path is not interpreted as a printf directive.
 	const GS::UniString texte = GS::UniString ("Tapir Translator : ") + ligne;
 	ACAPI_WriteReport ("%T", false, texte.ToPrintf ());
+	// Step 2: same line in journal.txt, so that a start-up problem can be diagnosed from the file
+	// without asking the user to copy the Session Report (no-op until the working folder is known).
+	Journal (ligne.ToCStr (0, MaxUSize, CC_UTF8).Get ());
 }
 
 // Returns the user-facing text 't' (table in TT_Textes.cpp) in the current message language.
@@ -795,6 +802,7 @@ GSErrCode RegisterInterface (void)
 	// (MenuFlag_InsertIntoSame); a separator is put before the Options menu.
 	const auto Enregistrer = [] (short menu, GSFlags drapeaux) {
 		const GSErrCode e = ACAPI_MenuItem_RegisterMenu (menu, static_cast<short> (menu + TT::DecalageAides), MenuCode_UserDef, drapeaux);
+		g_traceMenus += " " + std::to_string (menu) + "=" + std::to_string (static_cast<long> (e));
 		if (e != NoError && g_erreurMenus == NoError) {
 			g_erreurMenus = e;
 			g_menuEnErreur = menu;
@@ -826,6 +834,9 @@ GSErrCode Initialize (void)
 	}
 	// Step 2: layer, environment, settings and (optionally) the engine.
 	Demarrer ();
+	// Step 2b: trace of the menu registration (journal.txt only): ArchiCAD language code, menu
+	// language index, and the error code returned for each menu (0 = registered).
+	Journal ("menus : ArchiCAD " + g_versionArchicad + ", langue " + TT::CodeInterface (g_langueMenus) + ", RegisterMenu" + g_traceMenus);
 	if (g_erreurMenus != NoError)
 		Rapport (GS::UniString ("ERROR ACAPI_MenuItem_RegisterMenu (") + GS::ValueToUniString (static_cast<Int32> (g_menuEnErreur)) +
 				 ") = " + GS::ValueToUniString (static_cast<Int32> (g_erreurMenus)));
