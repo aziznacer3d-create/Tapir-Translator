@@ -243,7 +243,7 @@ messages) exists in the 20 ArchiCAD languages.
   32100 + 10 × language, help strings at + 300, all below 32767 because the ArchiCAD API reads them as
   16-bit signed integers); the add-on registers those of the chosen language and renames them when the
   language changes.
-- The detailed diagnostic (Options > status) stays in French, or in English for the other languages.
+- The detailed technical lines of the diagnostic (Options > status: folders, paths, errors) are in English.
 - Translations to be reviewed by native speakers.
 
 ## Build (Windows)

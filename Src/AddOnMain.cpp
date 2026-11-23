@@ -140,13 +140,6 @@ GS::UniString T (TT::Text t)
 	return Uni (std::string (TT::Txt (t, g_messageLanguage)));
 }
 
-// Picks the text of a technical line (diagnostics, system errors), which is not in the 20-language
-// table: French when the message language is French (index 0), English otherwise.
-const char* FE (const char* fr, const char* en)
-{
-	return g_messageLanguage == 0 ? fr : en;
-}
-
 // Displayable name of a language code, e.g. "Deutsch (de)".
 //   code:   language code from TT::Languages ("" = no specific language)
 //   ifEmpty: text returned when 'code' is empty (e.g. "automatic detection" or "no translation")
@@ -292,11 +285,11 @@ GS::UniString KeyStatus (const std::string& code)
 	// Step 1: read keys.json (it may be missing or edited by hand into invalid JSON).
 	std::string content;
 	if (!TT::ReadWholeFile (TT::KeysPath (g_root), content))
-		return FE ("keys.json absent", "keys.json missing");
+		return "keys.json missing";
 	// Step 2: parse it, skipping a UTF-8 BOM (Notepad may add one when saving).
 	Json::Value v;
 	if (!Json::Reader (content.compare (0, 3, "\xEF\xBB\xBF") == 0 ? content.substr (3) : content).Read (v))
-		return FE ("keys.json illisible (JSON invalide)", "keys.json unreadable (invalid JSON)");
+		return "keys.json unreadable (invalid JSON)";
 	// Step 3: check the field(s) that this service needs.
 	const Json::Value* s = v.Field (code);
 	if (code == "mymemory")
@@ -306,7 +299,7 @@ GS::UniString KeyStatus (const std::string& code)
 	if (s == nullptr || s->Text ("key").empty ())
 		return T (TT::R_KEY_TO_ENTER);
 	if (code == "microsoft" && s->Text ("region").empty ())
-		return T (TT::R_KEY_OK) + FE (", region vide", ", region empty");
+		return T (TT::R_KEY_OK) + ", region empty";
 	return T (TT::R_KEY_OK);
 }
 
@@ -392,8 +385,8 @@ void ExtractEngine ()
 			continue;
 		const std::wstring old = TT::Join (base, name);
 		TT::DeleteFolder (old);
-		Report (GS::UniString (TT::FolderExists (old) ? FE ("ancienne version non supprimee (en cours d'utilisation) : ", "old version not deleted (in use): ")
-														   : FE ("ancienne version supprimee : ", "old version deleted: ")) + Uni (old));
+		Report (GS::UniString (TT::FolderExists (old) ? "old version not deleted (in use): "
+														   : "old version deleted: ") + Uni (old));
 	}
 }
 
@@ -584,7 +577,7 @@ void StartEngine ()
 		g_engineCommandLine = line;
 		g_launchFolder = folder;
 		if (!StartProcess (error)) {
-			Report (GS::UniString (FE ("ERREUR lancement du moteur (", "ERROR starting the engine (")) +
+			Report (GS::UniString ("ERROR starting the engine (") +
 					 GS::ValueToUniString (static_cast<Int32> (error)) + ") : " + Uni (exe));
 			return;
 		}
@@ -604,13 +597,13 @@ void OpenCorrections ()
 {
 	std::wstring error;
 	if (!TT::CreateCorrectionsTemplate (g_root, error)) {
-		Report (GS::UniString (FE ("ERREUR creation de corrections.json : ", "ERROR creating corrections.json: ")) + Uni (error));
+		Report (GS::UniString ("ERROR creating corrections.json: ") + Uni (error));
 		return;
 	}
 	const std::wstring parameters = L"\"" + TT::CorrectionsPath (g_root) + L"\"";
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parameters.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Report (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::CorrectionsPath (g_root)));
+		Report (GS::UniString ("ERROR opening ") + Uni (TT::CorrectionsPath (g_root)));
 	else
 		Report (T (TT::R_CORRECTIONS_OPENED));
 }
@@ -622,13 +615,13 @@ void OpenKeys ()
 {
 	std::wstring error;
 	if (!TT::CreateKeysTemplate (g_root, error)) {
-		Report (GS::UniString (FE ("ERREUR creation de keys.json : ", "ERROR creating keys.json: ")) + Uni (error));
+		Report (GS::UniString ("ERROR creating keys.json: ") + Uni (error));
 		return;
 	}
 	const std::wstring parameters = L"\"" + TT::KeysPath (g_root) + L"\"";
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parameters.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Report (GS::UniString (FE ("ERREUR ouverture de ", "ERROR opening ")) + Uni (TT::KeysPath (g_root)));
+		Report (GS::UniString ("ERROR opening ") + Uni (TT::KeysPath (g_root)));
 	else
 		Report (T (TT::R_KEYS_OPENED) + " (" + Uni (TT::KeysPath (g_root)) + ")");
 }
@@ -651,7 +644,7 @@ void Save ()
 								{ { "l", Languages ().ToCStr (0, MaxUSize, CC_UTF8).Get () },
 								  { "o", online.ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 	} else
-		Report (GS::UniString (FE ("ERREUR ecriture settings.json : ", "ERROR writing settings.json: ")) + Uni (error));
+		Report (GS::UniString ("ERROR writing settings.json: ") + Uni (error));
 	// Step 3: menu check marks follow the in-memory settings.
 	RefreshCheckMarks ();
 }
@@ -663,7 +656,7 @@ void Start ()
 	// Step 1: working folder %APPDATA%\Tapir Translator; without APPDATA nothing can work.
 	g_root = TT::DefaultFolder ();
 	if (g_root.empty ()) {
-		Report (FE ("ERREUR : variable APPDATA absente, la traduction est inactive.", "ERROR: APPDATA variable missing, translation is inactive."));
+		Report ("ERROR: APPDATA variable missing, translation is inactive.");
 		return;
 	}
 	// Step 2: write the translation layer (sitecustomize.py), the common dictionary and the
@@ -704,11 +697,11 @@ void Status ()
 	const GS::UniString yes = T (TT::R_YES), non = T (TT::R_NO);
 	// Step 1: title, working folder, and the two environment variables as ArchiCAD sees them.
 	Report (GS::UniString ("=== ") + T (TT::M_STATUS) + " " + TT::AddOnVersion + " ===");
-	Report (GS::UniString (FE ("dossier = ", "folder = ")) + Uni (g_root) + (g_ready ? "" : FE ("  (couche NON installee)", "  (layer NOT installed)")));
+	Report (GS::UniString ("folder = ") + Uni (g_root) + (g_ready ? "" : "  (layer NOT installed)"));
 	Report (GS::UniString ("PYTHONPATH = ") + Uni (TT::GetEnvVar (L"PYTHONPATH")));
 	Report (GS::UniString ("TAPIR_TRANSLATOR_DIR = ") + Uni (TT::GetEnvVar (L"TAPIR_TRANSLATOR_DIR")));
 	// Step 2: languages, collection option and tool language (with ArchiCAD's code when automatic).
-	Report (GS::UniString (FE ("langues = ", "languages = ")) + Languages () + ", " + T (TT::M_COLLECT) + " = " + (g_settings.collect ? yes : non));
+	Report (GS::UniString ("languages = ") + Languages () + ", " + T (TT::M_COLLECT) + " = " + (g_settings.collect ? yes : non));
 	Report (T (TT::M_INTERFACE) + " = " + Uni (std::string (TT::InterfaceName (g_messageLanguage))) +
 			 (g_settings.interface.empty () ? GS::UniString (" (") + T (TT::M_INTERFACE_AUTO) + " : " + Uni (g_archicadVersion) + ")" : GS::UniString ()));
 	// Step 3: every translator with the state of its key; "[x]" marks the selected one.
@@ -716,20 +709,20 @@ void Status ()
 		Report (GS::UniString ("  ") + (g_settings.provider == TT::Providers[i].code ? "[x] " : "    ") +
 				 TT::Providers[i].name + " : " + KeyStatus (TT::Providers[i].code));
 	// Step 4: online translation wanted or not, and whether the engine process is alive.
-	Report (T (TT::M_ONLINE) + " = " + (g_settings.engine ? yes : non) + ", " + FE ("moteur ", "engine ") +
-			 (EngineRunning () ? FE ("en marche", "running") : FE ("arrete", "stopped")) + " (port " +
+	Report (T (TT::M_ONLINE) + " = " + (g_settings.engine ? yes : non) + ", " + "engine " +
+			 (EngineRunning () ? "running" : "stopped") + " (port " +
 			 GS::ValueToUniString (static_cast<Int32> (TT::EnginePort)) + ")");
 	// Step 5: payload embedded in the .apx (hash and the first 12 file paths).
 	{
 		std::wstring hash;
 		std::vector<std::wstring> paths;
 		if (TT::ReadPayload (ApxPath (), hash, paths)) {
-			Report (GS::UniString (FE ("charge embarquee dans le .apx : empreinte ", "payload embedded in the .apx: hash ")) + Uni (hash) + ", " +
-					 GS::ValueToUniString (static_cast<Int32> (paths.size ())) + FE (" fichier(s)", " file(s)"));
+			Report (GS::UniString ("payload embedded in the .apx: hash ") + Uni (hash) + ", " +
+					 GS::ValueToUniString (static_cast<Int32> (paths.size ())) + " file(s)");
 			for (size_t i = 0; i < paths.size () && i < 12; ++i)
 				Report (GS::UniString ("  ") + Uni (paths[i]));
 		} else
-			Report (FE ("aucune charge embarquee dans le .apx", "no payload embedded in the .apx"));
+			Report ("no payload embedded in the .apx");
 	}
 	// Step 6: candidate engine paths ("[x]" = file exists) and presence of the layer file.
 	for (const std::wstring& e : EngineLocations ())
@@ -740,7 +733,7 @@ void Status ()
 	// Step 7: installed dictionaries.
 	const std::wstring dictionaries = TT::Join (g_root, L"dictionaries");
 	const std::vector<std::wstring> dictionaryFiles = TT::ListJson (dictionaries);
-	Report (GS::UniString (FE ("dictionnaires (", "dictionaries (")) + GS::ValueToUniString (static_cast<Int32> (dictionaryFiles.size ())) + ") :");
+	Report (GS::UniString ("dictionaries (") + GS::ValueToUniString (static_cast<Int32> (dictionaryFiles.size ())) + ") :");
 	for (const std::wstring& d : dictionaryFiles)
 		Report (GS::UniString ("  ") + Uni (d));
 
@@ -748,7 +741,7 @@ void Status ()
 	// that are still empty (not yet translated by the user).
 	const std::wstring missing = TT::Join (g_root, L"missing");
 	const std::vector<std::wstring> files = TT::ListJson (missing);
-	Report (GS::UniString (FE ("textes manquants (", "missing texts (")) + GS::ValueToUniString (static_cast<Int32> (files.size ())) + ") :");
+	Report (GS::UniString ("missing texts (") + GS::ValueToUniString (static_cast<Int32> (files.size ())) + ") :");
 	for (const std::wstring& f : files) {
 		std::string content;
 		TT::ReadWholeFile (TT::Join (missing, f), content);
@@ -771,7 +764,7 @@ void OpenFolder ()
 	TT::CreateFolder (g_root);
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", g_root.c_str (), nullptr, nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
-		Report (GS::UniString (FE ("ERREUR ouverture du dossier ", "ERROR opening the folder ")) + Uni (g_root));
+		Report (GS::UniString ("ERROR opening the folder ") + Uni (g_root));
 }
 
 // Handler of all five menus (installed in Initialize). Dispatches on the menu resource ID and the
