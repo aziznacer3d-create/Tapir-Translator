@@ -205,6 +205,47 @@ void RafraichirCoches ()
 		Cocher (kMenuInterface (), i + 1, g_reglages.interface == TT::Langues[i].code);
 }
 
+// Renames, during the session, the items of the five registered menus into interface language
+// 'langue' (0 = fr ... 19 = zh), so that changing the tool language does not wait for the next
+// ArchiCAD start. The registered menus keep their resource IDs (those of g_langueMenus); only
+// their texts are replaced by those of the STR# resources of the new language, which have the same
+// layout: string 1 = main menu title, string 2 = submenu title, string k + 2 = item k.
+// Separators ("-") are left alone. The API documents items (index >= 1); index 0 is tried for the
+// submenu title and its result traced in journal.txt (ArchiCAD may refuse it).
+void TraduireMenus (int langue)
+{
+	const short menusEnregistres[5] = { kMenuEntree (), kMenuSortie (), kMenuCommandes (), kMenuTraducteur (), kMenuInterface () };
+	std::string trace;
+	for (short m = 0; m < 5; ++m) {
+		const short source = static_cast<short> (TT::BaseMenus (langue) + m);	// texts of the new language
+		// Step 1: the submenu title (string 2), as item 0.
+		GS::UniString texte;
+		API_MenuItemRef ref = {};
+		ref.menuResID = menusEnregistres[m];
+		if (RSGetIndString (&texte, source, 2, ACAPI_GetOwnResModule ()) && !texte.IsEmpty ()) {
+			ref.itemIndex = 0;
+			trace += " " + std::to_string (ref.menuResID) + ":0=" +
+					 std::to_string (static_cast<long> (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &texte)));
+		}
+		// Step 2: every item, until the resource has no more strings.
+		long erreurs = 0;
+		for (Int32 k = 1; k < 64; ++k) {
+			texte.Clear ();
+			if (!RSGetIndString (&texte, source, static_cast<short> (k + 2), ACAPI_GetOwnResModule ()) || texte.IsEmpty ())
+				break;
+			if (texte == "-")
+				continue;
+			ref.itemIndex = k;
+			if (ACAPI_MenuItem_SetMenuItemText (&ref, nullptr, &texte) != NoError)
+				++erreurs;
+		}
+		trace += " " + std::to_string (ref.menuResID) + ":items_erreurs=" + std::to_string (erreurs);
+	}
+	Journal (std::string ("menus renommes en ") + TT::CodeInterface (langue) + " :" + trace);
+	// Step 3: renaming may reset the item flags: put the check marks back.
+	RafraichirCoches ();
+}
+
 // Appends one UTF-8 line to <g_racine>\journal.txt, as "YYYY-MM-DD hh:mm:ss [add-on] <line>".
 // Unlike Rapport, this is safe outside the main thread (pure Win32): the watchdog uses it.
 // The layer and the engine write to the same file, hence the shared open mode. Errors are ignored.
@@ -742,7 +783,7 @@ GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 		std::wstring erreur;
 		TT::EcrireReglages (g_racine, g_reglages, erreur);
 		Rapport (Uni (TT::TxtF (TT::R_INTERFACE, g_langueMessages, { { "l", TT::NomInterface (g_langueMessages) } })));
-		RafraichirCoches ();
+		TraduireMenus (g_langueMessages);	// menu items follow at once (also restores the check marks)
 		// The engine receives the language on its command line: restart it if it is running.
 		if (g_moteurVoulu) {
 			ArreterMoteur ();
