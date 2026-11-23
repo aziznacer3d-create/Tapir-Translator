@@ -19,6 +19,7 @@
 #include "APIEnvir.h"
 #include "ACAPinc.h"
 
+#include "TT_Charge.hpp"
 #include "TT_Coeur.hpp"
 
 #include <shellapi.h>
@@ -100,23 +101,53 @@ void RafraichirCoches ()
 //  Moteur de traduction hors ligne
 // -----------------------------------------------------------------------------
 
-// Emplacements cherches, dans l'ordre : dossier "TapirTranslatorMoteur" a cote du .apx,
+// Chemin du .apx lui-meme (il porte le moteur et le modele, voir TT_Charge.hpp)
+std::wstring CheminApx ()
+{
+	HMODULE module = nullptr;
+	wchar_t chemin[MAX_PATH] = {};
+	if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+							reinterpret_cast<LPCWSTR> (&CheminApx), &module) &&
+		GetModuleFileNameW (module, chemin, MAX_PATH) > 0)
+		return chemin;
+	return std::wstring ();
+}
+
+// Dossier d'extraction : %LOCALAPPDATA%\Tapir Translator\moteur\<empreinte>
+std::wstring BaseExtraction ()
+{
+	std::wstring local = TT::LireVariable (L"LOCALAPPDATA");
+	return local.empty () ? TT::Joindre (g_racine, L"moteur") : TT::Joindre (TT::Joindre (local, L"Tapir Translator"), L"moteur");
+}
+
+std::wstring g_dossierMoteur;	// dossier extrait (moteur + modele)
+
+// Moteur embarque d'abord ; sinon (developpement) dossier "TapirTranslatorMoteur" a cote du .apx,
 // puis %APPDATA%\Tapir Translator\moteur
 std::vector<std::wstring> EmplacementsMoteur ()
 {
 	std::vector<std::wstring> res;
-	HMODULE module = nullptr;
-	if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-							reinterpret_cast<LPCWSTR> (&EmplacementsMoteur), &module)) {
-		wchar_t chemin[MAX_PATH] = {};
-		if (GetModuleFileNameW (module, chemin, MAX_PATH) > 0) {
-			std::wstring dossier = chemin;
-			dossier = dossier.substr (0, dossier.find_last_of (L"\\/"));
-			res.push_back (TT::Joindre (TT::Joindre (dossier, L"TapirTranslatorMoteur"), L"TapirTranslatorMoteur.exe"));
-		}
-	}
+	if (!g_dossierMoteur.empty ())
+		res.push_back (TT::Joindre (g_dossierMoteur, L"TapirTranslatorMoteur.exe"));
+	const std::wstring apx = CheminApx ();
+	if (!apx.empty ())
+		res.push_back (TT::Joindre (TT::Joindre (apx.substr (0, apx.find_last_of (L"\\/")), L"TapirTranslatorMoteur"), L"TapirTranslatorMoteur.exe"));
 	res.push_back (TT::Joindre (TT::Joindre (g_racine, L"moteur"), L"TapirTranslatorMoteur.exe"));
 	return res;
+}
+
+// Extrait la charge du .apx (une seule fois par version)
+void ExtraireMoteur ()
+{
+	if (!g_dossierMoteur.empty ())
+		return;
+	std::vector<std::wstring> journal;
+	std::wstring dossier;
+	const bool ok = TT::ExtraireCharge (CheminApx (), BaseExtraction (), dossier, journal);
+	for (const std::wstring& l : journal)
+		Rapport (Uni (l));
+	if (ok)
+		g_dossierMoteur = dossier;
 }
 
 bool MoteurEnMarche ()
@@ -140,6 +171,7 @@ void LancerMoteur ()
 	if (MoteurEnMarche ())
 		return;
 	ArreterMoteur ();
+	ExtraireMoteur ();
 	std::wstring exe;
 	for (const std::wstring& e : EmplacementsMoteur ()) {
 		if (TT::FichierExiste (e)) {
@@ -155,7 +187,13 @@ void LancerMoteur ()
 		return;
 	}
 	const std::wstring dossier = exe.substr (0, exe.find_last_of (L"\\/"));
-	std::wstring ligne = L"\"" + exe + L"\" --port " + std::to_wstring (TT::PortMoteur) + L" --parent " +
+	const std::wstring modele = TT::Joindre (dossier, L"modele");
+	if (!TT::DossierExiste (modele)) {
+		Rapport (GS::UniString ("ERREUR aucun modele de traduction a cote du moteur (") + Uni (modele) +
+				 ") : les textes hors dictionnaire restent dans leur langue.");
+		return;
+	}
+	std::wstring ligne = L"\"" + exe + L"\" --port " + std::to_wstring (TT::PortMoteur) + L" --modele \"" + modele + L"\" --parent " +
 						 std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" + TT::Joindre (g_racine, L"journal.txt") + L"\"";
 	std::vector<wchar_t> tampon (ligne.begin (), ligne.end ());
 	tampon.push_back (L'\0');
@@ -219,6 +257,17 @@ void Etat ()
 	Rapport (GS::UniString ("langues = ") + Langues () + ", collecte = " + (g_reglages.collecte ? "oui" : "non"));
 	Rapport (GS::UniString ("traduction automatique = ") + (g_reglages.moteur ? "oui" : "non") + ", moteur " +
 			 (MoteurEnMarche () ? "en marche" : "arrete") + " (port " + GS::ValueToUniString (static_cast<Int32> (TT::PortMoteur)) + ")");
+	{
+		std::wstring empreinte;
+		std::vector<std::wstring> chemins;
+		if (TT::LireCharge (CheminApx (), empreinte, chemins)) {
+			Rapport (GS::UniString ("charge embarquee dans le .apx : empreinte ") + Uni (empreinte) + ", " +
+					 GS::ValueToUniString (static_cast<Int32> (chemins.size ())) + " fichier(s)");
+			for (size_t i = 0; i < chemins.size () && i < 12; ++i)
+				Rapport (GS::UniString ("  ") + Uni (chemins[i]));
+		} else
+			Rapport ("aucune charge embarquee dans le .apx");
+	}
 	for (const std::wstring& e : EmplacementsMoteur ())
 		Rapport (GS::UniString ("  moteur ") + (TT::FichierExiste (e) ? "present : " : "absent : ") + Uni (e));
 	Rapport (GS::UniString ("couche presente = ") +

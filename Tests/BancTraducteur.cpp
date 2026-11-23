@@ -15,6 +15,7 @@
 //   Usage : BancTraducteur.exe   (uv doit etre dans le PATH)
 // *****************************************************************************
 
+#include "TT_Charge.hpp"
 #include "TT_Coeur.hpp"
 
 #if !defined (WIN32_LEAN_AND_MEAN)
@@ -354,8 +355,73 @@ int main ()
 	std::printf ("Tapir Translator %s - banc de test\n  dossier : %s\n  script  : %s\n\n", TT::VersionAddOn,
 				 TT::Utf8 (racine).c_str (), TT::Utf8 (script).c_str ());
 
+	// --- charge embarquee a la fin du .apx (TT_Charge) ------------------------------------
+	std::printf ("[0] Moteur et modele embarques dans le .apx\n");
+	{
+		const std::wstring dossier = TT::Joindre (temp, L"TapirTranslatorCharge_" + std::to_wstring (GetCurrentProcessId ()));
+		SupprimerArbre (dossier);
+		const std::wstring source = TT::Joindre (dossier, L"source");
+		TT::CreerDossier (TT::Joindre (source, L"modele\\sous"));
+		std::string gros (3 * 1024 * 1024 + 17, '\0');		// plus grand que le tampon de copie (1 Mo)
+		for (size_t i = 0; i < gros.size (); ++i)
+			gros[i] = static_cast<char> ((i * 31 + 7) & 0xFF);
+		Ecrire (TT::Joindre (source, L"moteur.exe"), "MZ faux moteur");
+		Ecrire (TT::Joindre (source, L"modele\\poids.bin"), gros);
+		Ecrire (TT::Joindre (source, L"modele\\sous\\vocabulaire é.txt"), "mur\nwall\n");
+		const std::wstring apx = TT::Joindre (dossier, L"faux.apx");
+		const std::string contenuApx = "faux contenu de DLL";
+		Ecrire (apx, contenuApx);
+
+		std::wstring empreinte, empreinte2;
+		std::vector<std::wstring> journal;
+		Verifier ("Empaqueter", TT::Empaqueter (apx, source, empreinte, journal));
+		Verifier ("Empaqueter une seconde fois (ancienne charge retiree)", TT::Empaqueter (apx, source, empreinte2, journal));
+		Verifier ("meme contenu = meme empreinte", empreinte == empreinte2 && !empreinte.empty ());
+		std::string apxLu;
+		TT::LireFichier (apx, apxLu);
+		Verifier ("le debut du .apx est intact", apxLu.compare (0, contenuApx.size (), contenuApx) == 0);
+		Verifier ("une seule charge apres deux passages", apxLu.size () < contenuApx.size () + gros.size () + 2000,
+				  std::to_string (apxLu.size ()));
+		std::wstring e;
+		std::vector<std::wstring> chemins;
+		Verifier ("LireCharge : 3 fichiers", TT::LireCharge (apx, e, chemins) && chemins.size () == 3 && e == empreinte);
+
+		std::wstring extrait;
+		const std::wstring base = TT::Joindre (dossier, L"extrait");
+		Verifier ("ExtraireCharge", TT::ExtraireCharge (apx, base, extrait, journal));
+		Verifier ("dossier d'extraction = empreinte", extrait == TT::Joindre (base, empreinte), TT::Utf8 (extrait));
+		std::string lu;
+		Verifier ("gros fichier identique", TT::LireFichier (TT::Joindre (extrait, L"modele\\poids.bin"), lu) && lu == gros);
+		Verifier ("fichier a accent identique", TT::LireFichier (TT::Joindre (extrait, L"modele\\sous\\vocabulaire é.txt"), lu) && lu == "mur\nwall\n");
+		journal.clear ();
+		Verifier ("deuxieme extraction : rien a refaire", TT::ExtraireCharge (apx, base, extrait, journal) &&
+				  !journal.empty () && journal.back ().find (L"deja extrait") != std::wstring::npos);
+
+		Ecrire (TT::Joindre (source, L"moteur.exe"), "MZ faux moteur v2");
+		std::wstring empreinte3;
+		TT::Empaqueter (apx, source, empreinte3, journal);
+		Verifier ("nouvelle version = nouvelle empreinte", empreinte3 != empreinte);
+		Verifier ("nouvelle version extraite a cote", TT::ExtraireCharge (apx, base, extrait, journal) &&
+				  TT::LireFichier (TT::Joindre (extrait, L"moteur.exe"), lu) && lu == "MZ faux moteur v2");
+		Verifier ("fichier sans charge refuse", !TT::LireCharge (TT::Joindre (source, L"moteur.exe"), e, chemins));
+
+		// le vrai .apx produit par le build (meme dossier que le banc)
+		wchar_t exe[MAX_PATH] = {};
+		GetModuleFileNameW (nullptr, exe, MAX_PATH);
+		std::wstring vrai = exe;
+		vrai = vrai.substr (0, vrai.find_last_of (L'\\') + 1) + L"Tapir_Translator.apx";
+		chemins.clear ();
+		bool moteurDedans = false;
+		if (TT::LireCharge (vrai, e, chemins)) {
+			for (const std::wstring& c : chemins)
+				moteurDedans = moteurDedans || c == L"TapirTranslatorMoteur.exe";
+		}
+		Verifier ("Tapir_Translator.apx contient TapirTranslatorMoteur.exe", moteurDedans);
+		SupprimerArbre (dossier);
+	}
+
 	// --- environnement, comme Initialize () de l'add-on -------------------------------
-	std::printf ("[1] Environnement prepare par l'add-on\n");
+	std::printf ("\n[1] Environnement prepare par l'add-on\n");
 	std::string dico = Preparer (racine);
 	// un PYTHONPATH deja present (avec son propre sitecustomize) doit etre garde et chaine
 	const std::wstring autre = TT::Joindre (racine, L"autre_chemin");

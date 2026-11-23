@@ -290,3 +290,37 @@ if (WIN32)
 	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32)
 	add_dependencies (BancTraducteur TapirTranslatorMoteur)
 endif ()
+
+# Charge embarquee a la fin du .apx : moteur (et modele s'il est present dans TT_DOSSIER_MODELE).
+# L'utilisateur ne copie que le .apx ; l'add-on extrait la charge au premier demarrage.
+set (TT_DOSSIER_MODELE "${CMAKE_CURRENT_LIST_DIR}/modele" CACHE PATH "Dossier du modele de traduction a embarquer.")
+if (WIN32)
+	add_executable (Empaqueter
+		Tools/Empaqueter.cpp
+		Src/TT_Charge.cpp
+		Src/TT_Coeur.cpp
+		"${EmbarqueCpp}"
+	)
+	target_include_directories (Empaqueter PRIVATE Src)
+	target_compile_features (Empaqueter PRIVATE cxx_std_20)
+	target_compile_options (Empaqueter PRIVATE /W3 /WX /utf-8)
+
+	set (DossierCharge "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
+	set (CommandesModele "")
+	if (EXISTS "${TT_DOSSIER_MODELE}")
+		message (STATUS "Modele embarque : ${TT_DOSSIER_MODELE}")
+		set (CommandesModele COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_DOSSIER_MODELE}" "${DossierCharge}/modele")
+	else ()
+		message (STATUS "Aucun modele dans ${TT_DOSSIER_MODELE} : seul le moteur est embarque")
+	endif ()
+	add_custom_command (TARGET AddOn POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E rm -rf "${DossierCharge}"
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}"
+		COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:TapirTranslatorMoteur>" "${DossierCharge}/"
+		${CommandesModele}
+		COMMAND "$<TARGET_FILE:Empaqueter>" "$<TARGET_FILE:AddOn>" "${DossierCharge}"
+		COMMENT "Embarquement du moteur de traduction dans le .apx..."
+	)
+	add_dependencies (AddOn TapirTranslatorMoteur Empaqueter)
+	target_sources (BancTraducteur PRIVATE Src/TT_Charge.cpp)
+endif ()

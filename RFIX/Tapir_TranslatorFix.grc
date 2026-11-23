@@ -7,7 +7,7 @@
 //   Menu principal "Tapir Translator" fait de trois menus enregistrés :
 //     32500 sous-menu "Langue d'entrée"   (1 = détection automatique, 2.. = TT::Langues[1..])
 //     32501 sous-menu "Langue de sortie"  (1 = aucune traduction,     2.. = TT::Langues[1..])
-//     32502 commandes
+//     32502 sous-menu "Options" (commandes)
 //   L'ordre des langues est celui de TT::Langues (Src/TT_Coeur.cpp) : les garder alignés.
 // ****************************************************************************/
 
@@ -84,6 +84,7 @@
 
 'STR#' 32502 "Menu : commandes" {
 /* [   ] */		"Tapir Translator"
+/* [   ] */		"Options"
 /* [  1] */			"Traduction automatique hors ligne (textes hors dictionnaire)"
 /* [  2] */			"Collecter les textes non traduits"
 /* [  3] */			"-"
@@ -92,6 +93,7 @@
 }
 
 'STR#' 32602 "Aide : commandes" {
+/* [   ] */		""
 /* [   ] */		""
 /* [  1] */		"Les textes absents des dictionnaires sont traduits par le moteur hors ligne (TapirTranslatorMoteur), puis gardés en cache."
 /* [  2] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
