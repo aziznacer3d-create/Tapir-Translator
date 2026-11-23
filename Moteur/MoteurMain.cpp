@@ -1,17 +1,17 @@
 // *****************************************************************************
-// Tapir Translator - moteur de traduction hors ligne (TapirTranslatorMoteur.exe)
+// Tapir Translator - moteur de traduction (TapirTranslatorMoteur.exe)
 //
 //   Petit serveur HTTP local (127.0.0.1 seulement), lance par l'add-on au
-//   demarrage d'ArchiCAD. Il garde le modele en memoire et sert tous les
+//   demarrage d'ArchiCAD. Il relaie vers le traducteur en ligne choisi et sert tous les
 //   scripts Tapir : la couche Python lui envoie, en arriere-plan, les textes
 //   que les dictionnaires ne connaissent pas.
 //
 //   GET  /etat      -> {"nom", "version", "langues"}
-//   POST /traduire  {"source": "fr" | "", "cible": "en", "textes": [...]}
+//   POST /traduire  {"fournisseur": "deepl", "source": "fr" | "", "cible": "en", "textes": [...]}
 //                   -> {"traductions": [...]}   (meme ordre, meme nombre)
 //   POST /arreter   -> arret du serveur
 //
-//   Options : --port N (8779)  --essai  --parent PID (s'arrete avec ArchiCAD)
+//   Options : --port N (8779)  --cles cles.json  --essai  --parent PID (s'arrete avec ArchiCAD)
 //             --journal fichier
 // *****************************************************************************
 
@@ -35,7 +35,7 @@
 
 namespace {
 
-const char* const kVersion = "0.3.0";
+const char* const kVersion = "0.5.0";
 std::string g_journal;
 
 void Journal (const std::string& ligne)
@@ -120,18 +120,50 @@ bool LireRequete (SOCKET s, std::string& methode, std::string& chemin, std::stri
 	return true;
 }
 
-std::string Etat (const Traducteur& t)
+struct Contexte {
+	std::unique_ptr<Traducteur> essai;	// --essai (banc)
+	std::unique_ptr<Traducteur> local;	// --modele (option de build TT_MODELE_LOCAL)
+	std::string cles;					// --cles : cles.json des traducteurs en ligne
+};
+
+Json::Valeur LireCles (const std::string& chemin)
 {
+	Json::Valeur v;
+	if (chemin.empty ())
+		return v;
+	FILE* f = nullptr;
+	if (fopen_s (&f, chemin.c_str (), "rb") != 0 || f == nullptr)
+		return v;
+	std::string contenu;
+	char tampon[4096];
+	size_t n = 0;
+	while ((n = std::fread (tampon, 1, sizeof (tampon), f)) > 0)
+		contenu.append (tampon, n);
+	std::fclose (f);
+	if (contenu.size () >= 3 && contenu.compare (0, 3, "\xEF\xBB\xBF") == 0)
+		contenu.erase (0, 3);
+	if (!Json::Lecteur (contenu).Lire (v))
+		Journal ("cles.json illisible (JSON invalide) : " + chemin);
+	return v;
+}
+
+std::string Etat (const Contexte& c)
+{
+	std::string fournisseurs;
+	for (const char* f : FournisseursEnLigne)
+		fournisseurs += std::string (fournisseurs.empty () ? "" : ", ") + Json::Chaine (f);
+	if (c.local != nullptr)
+		fournisseurs += ", \"local\"";
+	if (c.essai != nullptr)
+		fournisseurs += ", \"essai\"";
 	std::string langues;
-	for (const char* l : LanguesArchicad) {
-		if (t.Prend (l))
-			langues += std::string (langues.empty () ? "" : ", ") + Json::Chaine (l);
-	}
-	return "{\"nom\": " + Json::Chaine (t.Nom ()) + ", \"version\": " + Json::Chaine (kVersion) + ", \"langues\": [" + langues + "]}";
+	for (const char* l : LanguesArchicad)
+		langues += std::string (langues.empty () ? "" : ", ") + Json::Chaine (l);
+	return "{\"version\": " + Json::Chaine (kVersion) + ", \"fournisseurs\": [" + fournisseurs + "], \"langues\": [" + langues + "]}";
 }
 
 // Rend false pour arreter le serveur
-bool Traiter (SOCKET s, Traducteur& traducteur)
+bool Traiter (SOCKET s, Contexte& c)
 {
 	std::string methode, chemin, corps;
 	if (!LireRequete (s, methode, chemin, corps)) {
@@ -139,7 +171,7 @@ bool Traiter (SOCKET s, Traducteur& traducteur)
 		return true;
 	}
 	if (methode == "GET" && chemin == "/etat") {
-		Repondre (s, 200, Etat (traducteur));
+		Repondre (s, 200, Etat (c));
 		return true;
 	}
 	if (methode == "POST" && chemin == "/arreter") {
@@ -158,12 +190,29 @@ bool Traiter (SOCKET s, Traducteur& traducteur)
 	}
 	const std::string source = requete.Texte ("source");
 	const std::string cible = requete.Texte ("cible");
+	const std::string fournisseur = requete.Texte ("fournisseur", "mymemory");
 	const Json::Valeur* textes = requete.Champ ("textes");
-	if (cible.empty () || !traducteur.Prend (cible) || (!source.empty () && !traducteur.Prend (source)) ||
+	if (cible.empty () || !LangueArchicad (cible) || (!source.empty () && !LangueArchicad (source)) ||
 		textes == nullptr || textes->genre != Json::Valeur::Tableau) {
 		Repondre (s, 400, "{\"erreur\": \"langue non prise en charge ou textes absents\"}");
 		return true;
 	}
+
+	std::unique_ptr<Traducteur> enLigne;
+	Traducteur* traducteur = nullptr;
+	if (fournisseur == "essai")
+		traducteur = c.essai.get ();
+	else if (fournisseur == "local")
+		traducteur = c.local.get ();
+	else {
+		enLigne = CreerTraducteurEnLigne (fournisseur, LireCles (c.cles));
+		traducteur = enLigne.get ();
+	}
+	if (traducteur == nullptr) {
+		Repondre (s, 400, "{\"erreur\": " + Json::Chaine ("traducteur inconnu ou indisponible : " + fournisseur) + "}");
+		return true;
+	}
+
 	std::vector<std::string> entree;
 	for (const Json::Valeur& v : textes->tableau)
 		entree.push_back (v.genre == Json::Valeur::Chaine ? v.chaine : std::string ());
@@ -171,13 +220,14 @@ bool Traiter (SOCKET s, Traducteur& traducteur)
 	std::vector<std::string> sortie;
 	std::string erreur;
 	const DWORD debut = GetTickCount ();
-	if (!traducteur.Traduire (source, cible, entree, sortie, erreur) || sortie.size () != entree.size ()) {
-		Journal ("ERREUR traduction " + source + " -> " + cible + " : " + erreur);
-		Repondre (s, 500, "{\"erreur\": " + Json::Chaine (erreur.empty () ? "traduction impossible" : erreur) + "}");
+	if (!traducteur->Traduire (source, cible, entree, sortie, erreur) || sortie.size () != entree.size ()) {
+		// 503 : la couche garde le texte d'origine et reessaiera (reseau, quota, cle...)
+		Journal ("ERREUR " + traducteur->Nom () + " " + (source.empty () ? "auto" : source) + " -> " + cible + " : " + erreur);
+		Repondre (s, 503, "{\"erreur\": " + Json::Chaine (traducteur->Nom () + " : " + (erreur.empty () ? "traduction impossible" : erreur)) + "}");
 		return true;
 	}
-	Journal (std::to_string (entree.size ()) + " texte(s) " + (source.empty () ? "auto" : source) + " -> " + cible + " en " +
-			 std::to_string (GetTickCount () - debut) + " ms");
+	Journal (traducteur->Nom () + " : " + std::to_string (entree.size ()) + " texte(s) " + (source.empty () ? "auto" : source) +
+			 " -> " + cible + " en " + std::to_string (GetTickCount () - debut) + " ms");
 	std::string json = "{\"traductions\": [";
 	for (size_t i = 0; i < sortie.size (); ++i)
 		json += (i == 0 ? "" : ", ") + Json::Chaine (sortie[i]);
@@ -192,7 +242,7 @@ bool Traiter (SOCKET s, Traducteur& traducteur)
 int main (int argc, char** argv)
 {
 	int port = 8779;
-	bool essai = false;
+	Contexte contexte;
 	std::string modele;
 	DWORD parent = 0;
 	for (int i = 1; i < argc; ++i) {
@@ -200,33 +250,22 @@ int main (int argc, char** argv)
 		if (a == "--port" && i + 1 < argc)
 			port = std::atoi (argv[++i]);
 		else if (a == "--essai")
-			essai = true;
+			contexte.essai = CreerTraducteurEssai ();
 		else if (a == "--modele" && i + 1 < argc)
 			modele = argv[++i];
+		else if (a == "--cles" && i + 1 < argc)
+			contexte.cles = argv[++i];
 		else if (a == "--parent" && i + 1 < argc)
 			parent = static_cast<DWORD> (std::strtoul (argv[++i], nullptr, 10));
 		else if (a == "--journal" && i + 1 < argc)
 			g_journal = argv[++i];
 	}
-
-	std::unique_ptr<Traducteur> traducteur;
-	if (essai)
-		traducteur = CreerTraducteurEssai ();
-	else if (!modele.empty ()) {
-		const DWORD debut = GetTickCount ();
+	if (!modele.empty ()) {
 		std::string erreur;
-		traducteur = CreerTraducteurM2M100 (modele, erreur);
-		if (traducteur == nullptr)
-			Journal ("ERREUR modele " + modele + " : " + erreur);
-		else
-			Journal ("modele charge en " + std::to_string (GetTickCount () - debut) + " ms : " + modele);
+		contexte.local = CreerTraducteurM2M100 (modele, erreur);
+		if (contexte.local == nullptr)
+			Journal ("modele local indisponible : " + erreur);
 	}
-	if (traducteur == nullptr) {
-		Journal ("aucun traducteur disponible (ni --essai, ni --modele utilisable)");
-		std::fprintf (stderr, "aucun traducteur disponible\n");
-		return 3;
-	}
-
 	// S'arrete avec ArchiCAD
 	if (parent != 0) {
 		HANDLE h = OpenProcess (SYNCHRONIZE, FALSE, parent);
@@ -256,7 +295,7 @@ int main (int argc, char** argv)
 		WSACleanup ();
 		return 2;
 	}
-	Journal ("pret sur 127.0.0.1:" + std::to_string (port) + ", traducteur " + traducteur->Nom ());
+	Journal ("pret sur 127.0.0.1:" + std::to_string (port) + " (traducteurs en ligne, cles : " + (contexte.cles.empty () ? std::string ("aucune") : contexte.cles) + ")");
 	std::printf ("PRET %d\n", port);
 	std::fflush (stdout);
 
@@ -266,7 +305,7 @@ int main (int argc, char** argv)
 			continue;
 		DWORD delai = 10000;
 		setsockopt (client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*> (&delai), sizeof (delai));
-		const bool continuer = Traiter (client, *traducteur);
+		const bool continuer = Traiter (client, contexte);
 		shutdown (client, SD_BOTH);
 		closesocket (client);
 		if (!continuer)

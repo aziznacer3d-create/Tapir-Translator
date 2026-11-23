@@ -410,7 +410,6 @@
     {"en": "{n} created", "fr": "{n} créé(s)", "de": "{n} erstellt", "es": "{n} creado(s)", "pt": "{n} criado(s)", "it": "{n} creato/i", "hu": "{n} létrehozva"},
     {"en": "{n} modified", "fr": "{n} modifié(s)", "de": "{n} geändert", "es": "{n} modificado(s)", "pt": "{n} modificado(s)", "it": "{n} modificato/i", "hu": "{n} módosítva"},
     {"en": "{n} deleted", "fr": "{n} supprimé(s)", "de": "{n} gelöscht", "es": "{n} eliminado(s)", "pt": "{n} eliminado(s)", "it": "{n} eliminato/i", "hu": "{n} törölve"},
-    {"en": "Error: {nom}", "fr": "Erreur : {nom}", "de": "Fehler: {nom}", "es": "Error: {nom}", "pt": "Erro: {nom}", "it": "Errore: {nom}", "hu": "Hiba: {nom}"},
     {"en": "Version {nom}", "fr": "Version {nom}", "de": "Version {nom}", "es": "Versión {nom}", "pt": "Versão {nom}", "it": "Versione {nom}", "hu": "Verzió: {nom}"}
   ]
 }

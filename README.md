@@ -3,16 +3,42 @@
 Add-on ArchiCAD (C++, DevKit AC29 et AC30) qui traduit **en direct** l'interface des scripts Python lancés
 par la palette [Tapir](https://github.com/ENZYME-APD/tapir-archicad-automation), **sans modifier les
 scripts**. Il traduit d'abord avec des dictionnaires, puis, pour les phrases qu'ils ne connaissent pas,
-avec un **moteur de traduction hors ligne** embarqué dans le `.apx`. Libre de droit (domaine public,
-voir `LICENSE`) ; les composants tiers sont sous licences libres permissives (voir `licences/`).
+avec le **traducteur en ligne** de votre choix (DeepL, Microsoft Translator, Google Cloud Translation,
+MyMemory, LibreTranslate). Chaque traduction en ligne est gardée en cache sur le poste : elle n'est
+demandée qu'une fois. Libre de droit (domaine public, voir `LICENSE`).
 
 MDID : 623201637 / 1856068953.
 
 ## Installation
 
-Un seul fichier : `Tapir_Translator.apx` (environ 506 Mo, moteur et modèle compris), à copier dans le
-dossier des add-ons d'ArchiCAD. Au premier démarrage avec la traduction automatique cochée, l'add-on
-extrait le moteur et le modèle une seule fois dans `%LOCALAPPDATA%\Tapir Translator\moteur\<empreinte>\`.
+Un seul fichier : `Tapir_Translator.apx` (environ 2 Mo, moteur compris), à copier dans le dossier des
+add-ons d'ArchiCAD. Au premier démarrage avec la traduction en ligne cochée, l'add-on extrait le moteur
+une seule fois dans `%LOCALAPPDATA%\Tapir Translator\moteur\<empreinte>\` (les anciennes versions y sont
+supprimées).
+
+## Traducteurs en ligne
+
+| Traducteur | Gratuit (ordre de grandeur) | À renseigner dans `cles.json` |
+|---|---|---|
+| DeepL API Free | ~500 000 caractères / mois | `cle` (se termine par `:fx`) |
+| Microsoft Translator (Azure, niveau F0) | ~2 millions de caractères / mois | `cle` et `region` |
+| Google Cloud Translation (v2) | selon l'offre Google Cloud | `cle` |
+| MyMemory | ~5 000 caractères / jour (50 000 avec un e-mail) | rien (`email` facultatif) |
+| LibreTranslate | selon le serveur | `url` (et `cle` si demandée) |
+
+- Menu **Tapir Translator > Traducteur en ligne** : choix du traducteur (le choisir active la
+  traduction en ligne) et **Clés des traducteurs...**, qui ouvre `%APPDATA%\Tapir Translator\cles.json`
+  dans le Bloc-notes. Les clés restent sur le poste ; les scripts ne les voient jamais (seul le moteur
+  les lit, à chaque requête : une clé ajoutée sert tout de suite).
+- Le moteur `TapirTranslatorMoteur.exe` (127.0.0.1:8779) appelle les services par WinHTTP : proxy et
+  certificats de Windows. L'add-on le relance s'il s'arrête.
+- Erreur du service (clé absente ou refusée, quota atteint, réseau) : le texte d'origine reste affiché,
+  la cause est écrite une fois dans `journal.txt`, et la traduction est retentée toutes les 15 s.
+- Confidentialité : les textes affichés hors dictionnaire partent au service choisi (jamais les chemins,
+  noms de fichiers, identifiants et codes). D'après les conditions de DeepL (section 3.3.2), les textes
+  envoyés avec l'offre API **Free** peuvent être conservés par DeepL.
+- Cache : `%APPDATA%\Tapir Translator\cache\<traducteur>\<source>-<cible>.json`, partagé par tous les
+  scripts et relu même sans Internet ni moteur. Un dictionnaire l'emporte toujours sur le cache.
 
 ## Principe
 
@@ -26,17 +52,16 @@ extrait le moteur et le modèle une seule fois dans `%LOCALAPPDATA%\Tapir Transl
    attend l'import de `tkinter` et met un intermédiaire devant l'interpréteur Tcl de chaque fenêtre Tk.
 4. Le menu **Tapir Translator** écrit les langues dans `reglages.json`. La couche relit ce fichier et
    les dictionnaires toutes les 0,3 s : les fenêtres déjà ouvertes changent de langue.
-5. Les textes absents des dictionnaires partent en arrière-plan au moteur local
-   `TapirTranslatorMoteur.exe` (127.0.0.1:8779), lancé par l'add-on et arrêté avec ArchiCAD. Le texte
-   d'origine reste affiché le temps du calcul, puis la traduction apparaît ; elle est gardée dans
-   `cache\<source>-<cible>.json` (partagé par tous les scripts, réutilisé même moteur arrêté).
+5. Les textes absents des dictionnaires partent en arrière-plan au moteur local, qui les envoie au
+   traducteur en ligne choisi. Le texte d'origine reste affiché le temps de la réponse, puis la
+   traduction apparaît ; elle est gardée dans le cache.
 
 ## Langues
 
 Les 20 langues des versions d'ArchiCAD 29 : français, anglais, allemand, espagnol, portugais, italien,
 hongrois, tchèque, polonais, russe, ukrainien, grec, turc, néerlandais, suédois, norvégien, finnois,
-japonais, coréen, chinois. Le dictionnaire commun couvre fr, en, de, es, pt, it et hu ; le moteur traduit
-toutes les paires directement.
+japonais, coréen, chinois. Le dictionnaire commun couvre fr, en, de, es, pt, it et hu ; les traducteurs
+en ligne traduisent le reste.
 
 ## Ce qui est traduit
 
@@ -112,7 +137,10 @@ Le comportement dépend de la langue d'entrée :
 **Collecte** : avec *Collecter les textes non traduits* coché, chaque texte affiché sans traduction est
 noté dans `manquants\<script>.json`, au même format.
 
-## Moteur de traduction hors ligne
+## Moteur hors ligne (option de build, désactivée)
+
+Abandonné par défaut (trop gros) : il reste disponible avec `-DTT_MODELE_LOCAL=ON` (fournisseur `local`).
+Le `.apx` embarque alors le modèle et pèse environ 506 Mo.
 
 - Modèle : [facebook/m2m100_418M](https://huggingface.co/facebook/m2m100_418M) (Meta, **MIT**), converti
   au format CTranslate2 et quantifié en int8 : 490 Mo. Un seul réseau pour les 100 langues du modèle,
@@ -150,10 +178,12 @@ Sans ces éléments, le projet compile quand même : le moteur ne connaît alors
 |---|---|
 | Langue d'entrée > Détection automatique / 20 langues | langue dans laquelle les scripts sont écrits |
 | Langue de sortie > Aucune traduction / 20 langues | langue affichée, en direct (fenêtres ouvertes comprises) |
-| Options > Traduction automatique hors ligne | lance / arrête le moteur (phrases hors dictionnaire) |
+| Traducteur en ligne > DeepL / Microsoft Translator / Google Cloud Translation / MyMemory / LibreTranslate | traducteur des phrases hors dictionnaire |
+| Traducteur en ligne > Clés des traducteurs... | ouvre `cles.json` dans le Bloc-notes |
+| Options > Traduction en ligne | lance / arrête le moteur (phrases hors dictionnaire) |
 | Options > Collecter les textes non traduits | coché = notation dans `manquants\` |
 | Options > Ouvrir le dossier des dictionnaires | ouvre `%APPDATA%\Tapir Translator` |
-| Options > État de Tapir Translator | Rapport de session : dossiers, PYTHONPATH, langues, moteur, charge du `.apx`, dictionnaires, textes manquants, fin du journal |
+| Options > État de Tapir Translator | Rapport de session : dossiers, PYTHONPATH, langues, traducteur choisi et état de chaque clé (jamais la clé), moteur, dictionnaires, textes manquants, fin du journal |
 
 La couche et le moteur écrivent leurs erreurs dans `%APPDATA%\Tapir Translator\journal.txt` : elles
 n'atteignent jamais le script.
@@ -196,6 +226,11 @@ bout. `uv` doit être dans le `PATH`.
   `_perso.json`, menu Options corrigé, licences tierces jointes. Banc **300 / 300**. Compile en AC29 et
   AC30. Dictionnaires testés dans ArchiCAD par l'utilisateur ; **moteur réel pas encore testé dans
   ArchiCAD**.
+- v0.5.0 : moteur hors ligne retiré du build par défaut ; 5 traducteurs en ligne au choix (DeepL,
+  Microsoft, Google, MyMemory, LibreTranslate) avec cles.json ; cache par traducteur ; relance
+  automatique du moteur ; anciennes extractions supprimées ; correction de `{n}` (« Only the selected
+  éléments »). `.apx` de 2 Mo. Banc **324 / 324** (faux serveur aux formats des 5 services). MyMemory
+  vérifié en réel ; DeepL, Microsoft, Google, LibreTranslate pas encore avec de vraies clés.
 - Pas encore traduits : les interfaces HTML servies par un script (serveur local), les boutons des boîtes
   de message (Windows les affiche dans sa propre langue) et les fenêtres « Script UI » de Tapir.
 

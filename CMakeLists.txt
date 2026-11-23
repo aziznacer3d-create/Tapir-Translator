@@ -205,6 +205,7 @@ endif ()
 target_include_directories (AddOn PUBLIC
 	${AddOnSourcesFolder}
 	${AC_API_DEVKIT_DIR}/Support/Inc
+	${CMAKE_CURRENT_LIST_DIR}/Moteur
 )
 
 if (WIN32)
@@ -271,23 +272,29 @@ if (WIN32)
 		Src/TT_Coeur.hpp
 		"${EmbarqueCpp}"
 	)
-	target_include_directories (BancTraducteur PRIVATE Src)
+	target_include_directories (BancTraducteur PRIVATE Src Moteur)
 	target_compile_features (BancTraducteur PRIVATE cxx_std_20)
 	target_compile_options (BancTraducteur PRIVATE /W3 /WX /utf-8)
-	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"" "BANC_DOSSIER_MODELE=\"${CMAKE_CURRENT_LIST_DIR}/modele\"")
+	target_compile_definitions (BancTraducteur PRIVATE "BANC_DOSSIER_TESTS=\"${CMAKE_CURRENT_LIST_DIR}/Tests\"")
 endif ()
 
-# Moteur de traduction hors ligne (serveur HTTP local lance par l'add-on)
+# Moteur de traduction (serveur HTTP local lance par l'add-on) : relaie vers les traducteurs en ligne
+option (TT_MODELE_LOCAL "Moteur hors ligne M2M100 (CTranslate2) dans le moteur et le .apx (~500 Mo)" OFF)
 if (WIN32)
 	add_executable (TapirTranslatorMoteur
 		Moteur/MoteurMain.cpp
 		Moteur/TraducteurEssai.cpp
+		Moteur/TraducteursEnLigne.cpp
+		Moteur/Http.cpp
+		Moteur/Http.hpp
 		Moteur/Traducteur.hpp
 		Moteur/Json.hpp
 	)
 	target_compile_features (TapirTranslatorMoteur PRIVATE cxx_std_20)
 	target_compile_options (TapirTranslatorMoteur PRIVATE /W3 /WX /utf-8)
-	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32)
+	target_link_libraries (TapirTranslatorMoteur PRIVATE Ws2_32 Winhttp)
+	# CRT statique : le moteur ne depend d'aucune DLL
+	set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	add_dependencies (BancTraducteur TapirTranslatorMoteur)
 
 	# Traducteur reel : CTranslate2 (MIT, compile en statique sans MKL, voir README) +
@@ -295,7 +302,7 @@ if (WIN32)
 	set (TT_CT2 "${CMAKE_CURRENT_LIST_DIR}/_externe/ct2_install" CACHE PATH "Installation de CTranslate2 (statique).")
 	set (TT_CT2_BUILD "${CMAKE_CURRENT_LIST_DIR}/_externe/CTranslate2/build" CACHE PATH "Dossier de build de CTranslate2 (Ruy, cpu_features).")
 	set (TT_VCPKG_STATIQUE "C:/vcpkg/installed/x64-windows-static" CACHE PATH "vcpkg x64-windows-static (SentencePiece).")
-	if (EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib")
+	if (TT_MODELE_LOCAL AND EXISTS "${TT_CT2}/lib/ctranslate2.lib" AND EXISTS "${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib")
 		message (STATUS "Moteur : CTranslate2 + SentencePiece (traducteur M2M100)")
 		file (GLOB_RECURSE CT2_DEPENDANCES "${TT_CT2_BUILD}/third_party/*.lib")
 		list (FILTER CT2_DEPENDANCES INCLUDE REGEX "/Release/")
@@ -308,7 +315,7 @@ if (WIN32)
 			"${TT_VCPKG_STATIQUE}/lib/sentencepiece.lib" "${TT_VCPKG_STATIQUE}/lib/libprotobuf-lite.lib" ${VCPKG_LIBS})
 		set_property (TARGET TapirTranslatorMoteur PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	else ()
-		message (STATUS "Moteur : sans CTranslate2 (mode --essai seulement)")
+		message (STATUS "Moteur : traducteurs en ligne seulement (TT_MODELE_LOCAL=OFF)")
 		target_sources (TapirTranslatorMoteur PRIVATE Moteur/TraducteurM2M100Absent.cpp)
 	endif ()
 endif ()
@@ -329,17 +336,20 @@ if (WIN32)
 
 	set (DossierCharge "${CMAKE_BINARY_DIR}/charge/$<CONFIG>")
 	set (CommandesModele "")
-	if (EXISTS "${TT_DOSSIER_MODELE}")
+	if (TT_MODELE_LOCAL AND EXISTS "${TT_DOSSIER_MODELE}")
 		message (STATUS "Modele embarque : ${TT_DOSSIER_MODELE}")
-		set (CommandesModele COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_DOSSIER_MODELE}" "${DossierCharge}/modele")
+		# licences des composants tiers du moteur hors ligne (CTranslate2, Ruy, SentencePiece, modele...)
+		set (CommandesModele
+			COMMAND ${CMAKE_COMMAND} -E copy_directory "${TT_DOSSIER_MODELE}" "${DossierCharge}/modele"
+			COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licences" "${DossierCharge}/licences")
 	else ()
-		message (STATUS "Aucun modele dans ${TT_DOSSIER_MODELE} : seul le moteur est embarque")
+		message (STATUS "Aucun modele embarque : le .apx reste leger")
 	endif ()
 	add_custom_command (TARGET AddOn POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E rm -rf "${DossierCharge}"
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}"
 		COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:TapirTranslatorMoteur>" "${DossierCharge}/"
-		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_LIST_DIR}/licences" "${DossierCharge}/licences"
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${DossierCharge}/licences"
 		COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_LIST_DIR}/LICENSE" "${DossierCharge}/licences/Tapir_Translator_Unlicense.txt"
 		${CommandesModele}
 		COMMAND "$<TARGET_FILE:Empaqueter>" "$<TARGET_FILE:AddOn>" "${DossierCharge}"

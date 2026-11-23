@@ -22,6 +22,14 @@
 	#define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment (lib, "Ws2_32.lib")
+
+#include "Json.hpp"
+
+#include <cstring>
+#include <set>
 
 #include <atomic>
 #include <chrono>
@@ -277,29 +285,31 @@ std::function<bool (const std::map<std::string, Valeur>&)> Affiche (const std::s
 	};
 }
 
-void Langue (const std::wstring& racine, const char* code, bool collecte, const char* entree = "", bool moteur = false)
+void Langue (const std::wstring& racine, const char* code, bool collecte, const char* entree = "", bool moteur = false,
+			 const char* fournisseur = "essai")
 {
 	TT::Reglages r;
 	r.entree = entree;
 	r.langue = code;
 	r.collecte = collecte;
 	r.moteur = moteur;
+	r.fournisseur = fournisseur;
 	std::wstring erreur;
 	Verifier (std::string ("EcrireReglages entree=\"") + entree + "\" sortie=\"" + code + "\"" + (moteur ? " moteur" : ""),
 			  TT::EcrireReglages (racine, r, erreur), TT::Utf8 (erreur));
 	const TT::Reglages relu = TT::LireReglages (racine);
 	Verifier ("LireReglages relit les reglages", relu.entree == r.entree && relu.langue == r.langue && relu.collecte == r.collecte &&
-			  relu.moteur == r.moteur);
+			  relu.moteur == r.moteur && relu.fournisseur == r.fournisseur);
 }
 
-// Moteur de traduction (traducteur d'essai), a cote du banc
-HANDLE LancerMoteur (int port, const std::wstring& journal, const std::wstring& modele = std::wstring ())
+// Moteur de traduction, a cote du banc ; options : L"--essai" ou L"--cles \"...\""
+HANDLE LancerMoteur (int port, const std::wstring& journal, const std::wstring& options = L"--essai")
 {
 	wchar_t exe[MAX_PATH] = {};
 	GetModuleFileNameW (nullptr, exe, MAX_PATH);
 	std::wstring chemin = exe;
 	chemin = chemin.substr (0, chemin.find_last_of (L'\\') + 1) + L"TapirTranslatorMoteur.exe";
-	std::wstring ligne = L"\"" + chemin + (modele.empty () ? std::wstring (L"\" --essai") : L"\" --modele \"" + modele + L"\"") + L" --port " + std::to_wstring (port) + L" --parent " +
+	std::wstring ligne = L"\"" + chemin + L"\" " + options + L" --port " + std::to_wstring (port) + L" --parent " +
 						 std::to_wstring (GetCurrentProcessId ()) + L" --journal \"" + journal + L"\"";
 	std::vector<wchar_t> tampon (ligne.begin (), ligne.end ());
 	tampon.push_back (L'\0');
@@ -312,6 +322,192 @@ HANDLE LancerMoteur (int port, const std::wstring& journal, const std::wstring& 
 	Sleep (500);
 	return pi.hProcess;
 }
+
+// Faux service de traduction : repond aux formats de requete et de reponse de DeepL, Microsoft,
+// Google, MyMemory et LibreTranslate, avec "<SERVICE>:<langue cible>:<texte>". Verifie les cles.
+class ServeurFactice {
+public:
+	~ServeurFactice () { Arreter (); }
+
+	bool Demarrer (int port)
+	{
+		WSADATA wsa;
+		WSAStartup (MAKEWORD (2, 2), &wsa);
+		ecoute_ = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		sockaddr_in a = {};
+		a.sin_family = AF_INET;
+		a.sin_port = htons (static_cast<u_short> (port));
+		inet_pton (AF_INET, "127.0.0.1", &a.sin_addr);
+		if (bind (ecoute_, reinterpret_cast<sockaddr*> (&a), sizeof (a)) != 0 || listen (ecoute_, 16) != 0)
+			return false;
+		fil_ = std::thread ([this] () { Boucle (); });
+		return true;
+	}
+
+	void Arreter ()
+	{
+		if (ecoute_ != INVALID_SOCKET) {
+			closesocket (ecoute_);
+			ecoute_ = INVALID_SOCKET;
+		}
+		if (fil_.joinable ())
+			fil_.join ();
+	}
+
+	bool ARecu (const std::string& texte)
+	{
+		std::lock_guard<std::mutex> v (m_);
+		return recus_.count (texte) > 0;
+	}
+
+private:
+	static std::string Decoder (const std::string& s)
+	{
+		std::string r;
+		for (size_t i = 0; i < s.size (); ++i) {
+			if (s[i] == '%' && i + 2 < s.size ()) {
+				r += static_cast<char> (std::strtol (s.substr (i + 1, 2).c_str (), nullptr, 16));
+				i += 2;
+			} else
+				r += s[i] == '+' ? ' ' : s[i];
+		}
+		return r;
+	}
+
+	static std::string Parametre (const std::string& requete, const std::string& nom)
+	{
+		size_t p = 0;
+		while ((p = requete.find (nom + "=", p)) != std::string::npos) {
+			if (p == 0 || requete[p - 1] == '&' || requete[p - 1] == '?') {
+				const size_t debut = p + nom.size () + 1;
+				const size_t fin = requete.find ('&', debut);
+				return Decoder (requete.substr (debut, fin == std::string::npos ? std::string::npos : fin - debut));
+			}
+			++p;
+		}
+		return std::string ();
+	}
+
+	void Noter (const std::string& t)
+	{
+		std::lock_guard<std::mutex> v (m_);
+		recus_.insert (t);
+	}
+
+	static void Repondre (SOCKET s, int code, const std::string& json)
+	{
+		const std::string r = "HTTP/1.1 " + std::to_string (code) + " X\r\nContent-Type: application/json\r\nContent-Length: " +
+							  std::to_string (json.size ()) + "\r\nConnection: close\r\n\r\n" + json;
+		send (s, r.data (), static_cast<int> (r.size ()), 0);
+	}
+
+	void Boucle ()
+	{
+		for (;;) {
+			SOCKET c = accept (ecoute_, nullptr, nullptr);
+			if (c == INVALID_SOCKET)
+				return;
+			Traiter (c);
+			shutdown (c, SD_BOTH);
+			closesocket (c);
+		}
+	}
+
+	void Traiter (SOCKET c)
+	{
+		std::string t;
+		char b[8192];
+		size_t fin = std::string::npos;
+		while (fin == std::string::npos) {
+			const int n = recv (c, b, sizeof (b), 0);
+			if (n <= 0)
+				return;
+			t.append (b, static_cast<size_t> (n));
+			fin = t.find ("\r\n\r\n");
+		}
+		std::string entetes = t.substr (0, fin);
+		std::string corps = t.substr (fin + 4);
+		std::string minus = entetes;
+		for (char& ch : minus)
+			ch = static_cast<char> (std::tolower (static_cast<unsigned char> (ch)));
+		const size_t cl = minus.find ("content-length:");
+		const size_t longueur = cl == std::string::npos ? 0 : static_cast<size_t> (std::strtoul (minus.c_str () + cl + 15, nullptr, 10));
+		while (corps.size () < longueur) {
+			const int n = recv (c, b, sizeof (b), 0);
+			if (n <= 0)
+				break;
+			corps.append (b, static_cast<size_t> (n));
+		}
+		const auto entete = [&] (const char* nom) {
+			const size_t p = minus.find (std::string ("\r\n") + nom + ":");
+			if (p == std::string::npos)
+				return std::string ();
+			size_t d = p + 3 + std::strlen (nom);
+			while (d < entetes.size () && entetes[d] == ' ')
+				++d;
+			return entetes.substr (d, entetes.find ("\r\n", d) - d);
+		};
+		const size_t sp1 = entetes.find (' ');
+		const std::string cibleUrl = entetes.substr (sp1 + 1, entetes.find (' ', sp1 + 1) - sp1 - 1);
+		const size_t q = cibleUrl.find ('?');
+		const std::string chemin = cibleUrl.substr (0, q);
+		const std::string requete = q == std::string::npos ? std::string () : cibleUrl.substr (q + 1);
+		Json::Valeur v;
+		Json::Lecteur (corps).Lire (v);
+
+		const auto liste = [&] (const Json::Valeur* tab, const char* prefixe, const std::string& cible, const char* champ) {
+			std::string r;
+			if (tab != nullptr && tab->genre == Json::Valeur::Tableau) {
+				for (const Json::Valeur& e : tab->tableau) {
+					const std::string texte = e.genre == Json::Valeur::Chaine ? e.chaine : e.Texte ("Text");
+					Noter (texte);
+					const std::string trad = Json::Chaine (std::string (prefixe) + ":" + cible + ":" + texte);
+					r += std::string (r.empty () ? "" : ", ") + (champ != nullptr ? "{\"" + std::string (champ) + "\": " + trad + "}" : trad);
+				}
+			}
+			return r;
+		};
+
+		if (chemin == "/v2/translate") {						// DeepL
+			if (entete ("authorization") != "DeepL-Auth-Key cle-deepl:fx")
+				return Repondre (c, 403, "{\"message\": \"Authorization failed\"}");
+			return Repondre (c, 200, "{\"translations\": [" + liste (v.Champ ("text"), "DL", v.Texte ("target_lang"), "text") + "]}");
+		}
+		if (chemin == "/translate" && !Parametre (requete, "api-version").empty ()) {	// Microsoft
+			if (entete ("ocp-apim-subscription-key") != "cle-ms")
+				return Repondre (c, 401, "{\"error\": {\"message\": \"invalid key\"}}");
+			const std::string to = Parametre (requete, "to");
+			std::string r;
+			for (const Json::Valeur& e : v.tableau) {
+				Noter (e.Texte ("Text"));
+				r += std::string (r.empty () ? "" : ", ") + "{\"translations\": [{\"text\": " + Json::Chaine ("MS:" + to + ":" + e.Texte ("Text")) +
+					 ", \"to\": " + Json::Chaine (to) + "}]}";
+			}
+			return Repondre (c, 200, "[" + r + "]");
+		}
+		if (chemin == "/language/translate/v2") {				// Google
+			if (Parametre (requete, "key") != "cle-google")
+				return Repondre (c, 400, "{\"error\": {\"message\": \"API key not valid\"}}");
+			return Repondre (c, 200, "{\"data\": {\"translations\": [" + liste (v.Champ ("q"), "GG", v.Texte ("target"), "translatedText") + "]}}");
+		}
+		if (chemin == "/get") {									// MyMemory
+			const std::string texte = Parametre (requete, "q");
+			const std::string paire = Parametre (requete, "langpair");
+			Noter (texte);
+			return Repondre (c, 200, "{\"responseData\": {\"translatedText\": " + Json::Chaine ("MM:" + paire.substr (paire.find ('|') + 1) + ":" + texte) +
+										 "}, \"responseStatus\": 200}");
+		}
+		if (chemin == "/translate") {							// LibreTranslate
+			return Repondre (c, 200, "{\"translatedText\": [" + liste (v.Champ ("q"), "LT", v.Texte ("target"), nullptr) + "]}");
+		}
+		Repondre (c, 404, "{}");
+	}
+
+	SOCKET ecoute_ = INVALID_SOCKET;
+	std::thread fil_;
+	std::mutex m_;
+	std::set<std::string> recus_;
+};
 
 void ArreterMoteur (HANDLE& moteur)
 {
@@ -650,7 +846,7 @@ int main ()
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
 		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_moteur");	// aucun dictionnaire propre
 		const std::wstring journal = TT::Joindre (racine, L"journal.txt");
-		const std::wstring cacheEn = TT::Joindre (TT::Joindre (racine, L"cache"), L"fr-en.json");
+		const std::wstring cacheEn = TT::Joindre (TT::Joindre (TT::Joindre (racine, L"cache"), L"essai"), L"fr-en.json");
 		HANDLE moteur = nullptr;
 		Langue (racine, "en", false, "", true);
 		{
@@ -712,66 +908,74 @@ int main ()
 		Langue (racine, "en", false);
 	}
 
-	// --- moteur reel (M2M100) de bout en bout ------------------------------------------------
-	std::printf ("\n[3e] Moteur reel M2M100 (si le modele est present)\n");
-#if defined (BANC_DOSSIER_MODELE)
+	// --- traducteurs en ligne (faux serveur aux formats DeepL, Microsoft, Google, MyMemory,
+	//     LibreTranslate), en passant par le vrai moteur -------------------------------------
+	std::printf ("\n[3e] Traducteurs en ligne (faux serveur, formats reels des 5 services)\n");
 	{
-		std::wstring modele = TT::DepuisUtf8 (BANC_DOSSIER_MODELE);
-		for (wchar_t& c : modele) {
-			if (c == L'/')
-				c = L'\\';
-		}
-		if (!TT::FichierExiste (TT::Joindre (modele, L"model.bin"))) {
-			std::printf ("  (saute : pas de modele dans %s)\n", TT::Utf8 (modele).c_str ());
-		} else {
-			const int port = 8796;
-			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
-			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_moteur_reel");
-			// le cache garde les reponses du moteur d'essai ([3d]) : on repart d'un cache vide
-			SupprimerArbre (TT::Joindre (racine, L"cache"));
-			HANDLE moteur = LancerMoteur (port, TT::Joindre (racine, L"journal.txt"), modele);
-			Verifier ("moteur reel lance", moteur != nullptr);
-			Langue (racine, "en", false, "fr", true);
-			{
-				Outil o;
-				Verifier ("lancement", o.Lancer (script, racine));
-				const auto traduit = [] (const std::string& cle, const std::string& origine) {
-					return [cle, origine] (const std::map<std::string, Valeur>& e) {
-						auto it = e.find (cle);
-						return it != e.end () && it->second.affiche != origine && it->second.affiche.find ("[en]") == std::string::npos &&
-							   !it->second.affiche.empty ();
-					};
-				};
-				Verifier ("phrase hors dictionnaire traduite par M2M100 (fr -> en)", o.Attendre (traduit ("inconnu", "Texte inconnu"), 40000));
-				Verifier ("titre traduit par M2M100", o.Attendre (traduit ("titre", "Outil de démonstration"), 10000));
-				const Valeur inconnu = o.Lire ("inconnu");
-				const Valeur titre = o.Lire ("titre");
-				std::printf ("         | \"Texte inconnu\" -> \"%s\"\n         | \"Outil de démonstration\" -> \"%s\"\n",
-							 inconnu.affiche.c_str (), titre.affiche.c_str ());
-				Verifier ("le script voit toujours l'original", inconnu.vu == "Texte inconnu" && titre.vu == "Outil de démonstration");
-				Texte (o, "fermer", "Close", "Fermer");						// dictionnaire d'abord
-				Texte (o, "chemin", "C:\\Projets\\plan.pln", "C:\\Projets\\plan.pln");
-				Texte (o, "logique", "ok");
-				Langue (racine, "pl", false, "fr", true);
-				Verifier ("polonais (aucune colonne de dictionnaire) : traduit par le moteur",
-						  o.Attendre ([] (const std::map<std::string, Valeur>& e) {
-							  auto it = e.find ("fermer");
-							  return it != e.end () && it->second.affiche != "Fermer" && it->second.affiche != "Close" &&
-									 !it->second.affiche.empty ();
-						  }, 30000));
-				std::printf ("         | \"Fermer\" -> \"%s\" ; \"Murs\" -> \"%s\"\n", o.Lire ("fermer").affiche.c_str (), o.Lire ("murs").affiche.c_str ());
-				Texte (o, "logique", "ok");
-				DWORD code = 1;
-				Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
+		const int portServices = 8798;
+		const int port = 8796;
+		ServeurFactice faux;
+		Verifier ("faux serveur de traduction demarre", faux.Demarrer (portServices));
+		const std::wstring base = L"http://127.0.0.1:" + std::to_wstring (portServices);
+		for (const wchar_t* nom : { L"DEEPL", L"MICROSOFT", L"GOOGLE", L"MYMEMORY", L"LIBRETRANSLATE" })
+			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + nom).c_str (), base.c_str ());
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_MOTEUR_PORT", std::to_wstring (port).c_str ());
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", L"script_en_ligne");
+		const std::wstring cles = TT::CheminCles (racine);
+		std::wstring erreur;
+		Verifier ("modele de cles.json cree", TT::CreerModeleCles (racine, erreur) && TT::FichierExiste (cles));
+		// la cle Google manque au depart
+		Ecrire (cles, "{\"deepl\": {\"cle\": \"cle-deepl:fx\"}, \"microsoft\": {\"cle\": \"cle-ms\", \"region\": \"westeurope\"},"
+					  " \"google\": {\"cle\": \"\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"cle\": \"\"}}");
+		HANDLE moteur = LancerMoteur (port, TT::Joindre (racine, L"journal.txt"), L"--cles \"" + cles + L"\"");
+		Verifier ("moteur lance avec cles.json", moteur != nullptr);
+		{
+			Outil o;
+			Langue (racine, "en", false, "fr", true, "deepl");
+			Verifier ("lancement", o.Lancer (script, racine));
+			const struct { const char* code; const char* attendu; } services[] = {
+				{ "deepl", "DL:EN-GB:Texte inconnu" },
+				{ "microsoft", "MS:en:Texte inconnu" },
+				{ "mymemory", "MM:en:Texte inconnu" },
+				{ "libretranslate", "LT:en:Texte inconnu" },
+			};
+			for (const auto& s : services) {
+				Langue (racine, "en", false, "fr", true, s.code);
+				Verifier (std::string (s.code) + " : phrase traduite (format de requete et de reponse du service)",
+						  o.Attendre (Affiche ("inconnu", s.attendu), 20000), o.Lire ("inconnu").affiche);
+				Texte (o, "fermer", "Close", "Fermer");			// dictionnaire d'abord
 			}
-			ArreterMoteur (moteur);
-			SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
-			Langue (racine, "en", false);
+			Texte (o, "logique", "ok");
+
+			Langue (racine, "en", false, "fr", true, "google");
+			Verifier ("google sans cle : texte d'origine garde", o.Attendre (Affiche ("inconnu", "Texte inconnu"), 10000));
+			Sleep (2000);
+			Texte (o, "inconnu", "Texte inconnu", "Texte inconnu");
+			Ecrire (cles, "{\"deepl\": {\"cle\": \"cle-deepl:fx\"}, \"microsoft\": {\"cle\": \"cle-ms\", \"region\": \"westeurope\"},"
+						  " \"google\": {\"cle\": \"cle-google\"}, \"mymemory\": {\"email\": \"\"}, \"libretranslate\": {\"url\": \"\", \"cle\": \"\"}}");
+			Verifier ("cle Google ajoutee a chaud : traduit au nouvel essai (< 30 s)",
+					  o.Attendre (Affiche ("inconnu", "GG:en:Texte inconnu"), 30000), o.Lire ("inconnu").affiche);
+
+			Langue (racine, "en", false, "fr", true, "deepl");
+			Verifier ("retour a DeepL : son cache redonne sa traduction", o.Attendre (Affiche ("inconnu", "DL:EN-GB:Texte inconnu"), 10000));
+			Texte (o, "logique", "ok");
+			DWORD code = 1;
+			Verifier ("fermeture propre", o.Finir (code, 10000) && code == 0);
 		}
+		Verifier ("aucun texte du dictionnaire envoye en ligne (\"Fermer\")", !faux.ARecu ("Fermer"));
+		Verifier ("aucune donnee envoyee en ligne (chemin, code)", !faux.ARecu ("C:\\Projets\\plan.pln") && !faux.ARecu ("MUR-01"));
+		const std::vector<std::string> journal = TT::DernieresLignes (TT::Joindre (racine, L"journal.txt"), 300);
+		bool signale = false;
+		for (const std::string& l : journal)
+			signale = signale || l.find ("cle Google absente") != std::string::npos;
+		Verifier ("journal : la cle Google manquante est expliquee", signale);
+		ArreterMoteur (moteur);
+		faux.Arreter ();
+		for (const wchar_t* nom : { L"DEEPL", L"MICROSOFT", L"GOOGLE", L"MYMEMORY", L"LIBRETRANSLATE" })
+			SetEnvironmentVariableW ((std::wstring (L"TAPIR_TRANSLATOR_URL_") + nom).c_str (), nullptr);
+		SetEnvironmentVariableW (L"TAPIR_TRANSLATOR_OUTIL", nullptr);
+		Langue (racine, "en", false);
 	}
-#else
-	std::printf ("  (saute : BANC_DOSSIER_MODELE non defini)\n");
-#endif
 
 	// --- hors Tapir : la couche ne doit rien faire ---------------------------------------
 	std::printf ("\n[4] Python lance hors Tapir (pas de TAPIR_SCRIPT_ID)\n");

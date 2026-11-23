@@ -13,7 +13,7 @@
 
 namespace TT {
 
-const char* const VersionAddOn = "0.4.0";
+const char* const VersionAddOn = "0.5.0";
 
 // Meme ordre que les menus 32500 / 32501 (RFIX/Tapir_TranslatorFix.grc) et que les
 // colonnes de dictionnaires/_commun.json
@@ -41,6 +41,26 @@ const Langue Langues[] = {
 	{ "zh",	"中文" },
 };
 const int NombreLangues = static_cast<int> (sizeof (Langues) / sizeof (Langues[0]));
+
+const Fournisseur Fournisseurs[] = {
+	{ "deepl",			"DeepL",					"cle (compte DeepL API Free)" },
+	{ "microsoft",		"Microsoft Translator",		"cle + region (Azure, niveau gratuit F0)" },
+	{ "google",			"Google Cloud Translation",	"cle (Google Cloud)" },
+	{ "mymemory",		"MyMemory",					"rien (e-mail facultatif pour un quota plus grand)" },
+	{ "libretranslate",	"LibreTranslate",			"adresse du serveur (+ cle si demandee)" },
+};
+const int NombreFournisseurs = static_cast<int> (sizeof (Fournisseurs) / sizeof (Fournisseurs[0]));
+
+bool FournisseurConnu (const std::string& code)
+{
+	if (code == "essai" || code == "local")
+		return true;
+	for (int i = 0; i < NombreFournisseurs; ++i) {
+		if (code == Fournisseurs[i].code)
+			return true;
+	}
+	return false;
+}
 
 
 // =============================================================================
@@ -234,6 +254,46 @@ std::vector<std::wstring> ListerJson (const std::wstring& dossier)
 }
 
 
+void SupprimerDossier (const std::wstring& dossier)
+{
+	WIN32_FIND_DATAW d;
+	HANDLE h = FindFirstFileW (Joindre (dossier, L"*").c_str (), &d);
+	if (h != INVALID_HANDLE_VALUE) {
+		do {
+			const std::wstring nom = d.cFileName;
+			if (nom == L"." || nom == L"..")
+				continue;
+			const std::wstring chemin = Joindre (dossier, nom);
+			if (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				SupprimerDossier (chemin);
+			else {
+				SetFileAttributesW (chemin.c_str (), FILE_ATTRIBUTE_NORMAL);
+				DeleteFileW (chemin.c_str ());
+			}
+		} while (FindNextFileW (h, &d));
+		FindClose (h);
+	}
+	RemoveDirectoryW (dossier.c_str ());
+}
+
+
+std::vector<std::wstring> ListerDossiers (const std::wstring& dossier)
+{
+	std::vector<std::wstring> res;
+	WIN32_FIND_DATAW d;
+	HANDLE h = FindFirstFileW (Joindre (dossier, L"*").c_str (), &d);
+	if (h == INVALID_HANDLE_VALUE)
+		return res;
+	do {
+		const std::wstring nom = d.cFileName;
+		if ((d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && nom != L"." && nom != L"..")
+			res.push_back (nom);
+	} while (FindNextFileW (h, &d));
+	FindClose (h);
+	return res;
+}
+
+
 int CompterVides (const std::string& json)
 {
 	// Les fichiers de manquants sont ecrits par la couche (json.dump, indent=2) :
@@ -330,6 +390,8 @@ bool ExtraireCouche (const std::wstring& racine, std::vector<std::wstring>& jour
 		if (EcrireFichier (perso, modele, erreur))
 			journal.push_back (L"dictionnaire personnel cree : " + perso);
 	}
+	if (!FichierExiste (CheminCles (racine)) && CreerModeleCles (racine, erreur))
+		journal.push_back (L"fichier des cles cree : " + CheminCles (racine));
 	return ok;
 }
 
@@ -387,7 +449,55 @@ Reglages LireReglages (const std::wstring& racine)
 	pos = ApresCle (json, "moteur");
 	if (pos != std::string::npos)
 		r.moteur = json.compare (pos, 4, "true") == 0;
+	pos = ApresCle (json, "fournisseur");
+	if (pos != std::string::npos && pos < json.size () && json[pos] == '"') {
+		const size_t fin = json.find ('"', pos + 1);
+		if (fin != std::string::npos && FournisseurConnu (json.substr (pos + 1, fin - pos - 1)))
+			r.fournisseur = json.substr (pos + 1, fin - pos - 1);
+	}
 	return r;
+}
+
+
+std::wstring CheminCles (const std::wstring& racine)
+{
+	return Joindre (racine, L"cles.json");
+}
+
+
+bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur)
+{
+	const std::wstring chemin = CheminCles (racine);
+	if (FichierExiste (chemin))
+		return true;
+	const std::string modele =
+		"{\n"
+		"  \"_explication\": \"Cles des traducteurs en ligne de Tapir Translator. Ce fichier reste sur ce poste : il n'est jamais envoye ni lu par les scripts. Enregistrez-le, la cle sert des la traduction suivante.\",\n"
+		"  \"deepl\": {\n"
+		"    \"_ou\": \"https://www.deepl.com/pro-api : offre DeepL API Free (une cle se termine par :fx)\",\n"
+		"    \"cle\": \"\"\n"
+		"  },\n"
+		"  \"microsoft\": {\n"
+		"    \"_ou\": \"portail Azure : ressource Translator, niveau F0 (gratuit) ; region = celle de la ressource, ex. westeurope\",\n"
+		"    \"cle\": \"\",\n"
+		"    \"region\": \"\"\n"
+		"  },\n"
+		"  \"google\": {\n"
+		"    \"_ou\": \"console Google Cloud : API Cloud Translation activee, cle API\",\n"
+		"    \"cle\": \"\"\n"
+		"  },\n"
+		"  \"mymemory\": {\n"
+		"    \"_ou\": \"aucune cle ; une adresse e-mail augmente le quota quotidien gratuit\",\n"
+		"    \"email\": \"\"\n"
+		"  },\n"
+		"  \"libretranslate\": {\n"
+		"    \"_ou\": \"adresse d'un serveur LibreTranslate (le votre ou une instance publique) et sa cle si elle en demande une\",\n"
+		"    \"url\": \"\",\n"
+		"    \"cle\": \"\"\n"
+		"  }\n"
+		"}\n";
+	CreerDossier (racine);
+	return EcrireFichier (chemin, modele, erreur);
 }
 
 
@@ -403,6 +513,7 @@ bool EcrireReglages (const std::wstring& racine, const Reglages& reglages, std::
 	json += "  \"langue\": \"" + reglages.langue + "\",\n";
 	json += std::string ("  \"collecte\": ") + (reglages.collecte ? "true" : "false") + ",\n";
 	json += std::string ("  \"moteur\": ") + (reglages.moteur ? "true" : "false") + ",\n";
+	json += "  \"fournisseur\": \"" + (FournisseurConnu (reglages.fournisseur) ? reglages.fournisseur : std::string ("mymemory")) + "\",\n";
 	json += "  \"port\": " + std::to_string (PortMoteur) + ",\n";
 	json += std::string ("  \"ecrit_par\": \"Tapir Translator ") + VersionAddOn + "\"\n";
 	json += "}\n";

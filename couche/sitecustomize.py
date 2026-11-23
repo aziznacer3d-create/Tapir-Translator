@@ -34,11 +34,13 @@ Toute erreur interne est ecrite dans journal.txt et n'atteint jamais le script.
 import os
 import sys
 
-VERSION_COUCHE = "0.4.0"
+VERSION_COUCHE = "0.5.0"
 _PERIODE_MS = 300            # relecture des reglages / dictionnaires, traductions arrivees
 _TAILLE_JOURNAL = 512 * 1024  # au-dela, le journal repart a zero
 
 _OPTIONS_TEXTE = ("-text", "-label")
+# parties variables des dictionnaires qui ne peuvent etre que des nombres
+_NOMS_NOMBRE = ("n", "nb", "nombre", "count", "i", "x", "total", "n1", "n2")
 _TYPES_MENU = ("command", "cascade", "checkbutton", "radiobutton", "separator")
 # classes Tk dont une -textvariable est affichee telle quelle (pas saisie)
 _CLASSES_AFFICHAGE = ("label", "button", "checkbutton", "radiobutton", "labelframe",
@@ -208,7 +210,8 @@ class _Moteur:
                         if isinstance(texte, str) and not code.startswith("_") and "{" not in texte:
                             self.colonnes.setdefault(code, set()).add(texte)
         port = os.environ.get("TAPIR_TRANSLATOR_MOTEUR_PORT", "") or str(reglages.get("port", "") or "")
-        self.auto.configurer(bool(reglages.get("moteur", False)) and bool(langue), source, langue, port)
+        self.auto.configurer(bool(reglages.get("moteur", False)) and bool(langue), source, langue, port,
+                             str(reglages.get("fournisseur", "") or "mymemory"))
         return True
 
     def _voter(self, texte):
@@ -303,8 +306,13 @@ class _Moteur:
                     nom = noms[i]
                     if nom in noms[:i]:
                         motif += "(?P=%s)" % nom
+                    elif nom in _NOMS_NOMBRE:
+                        # {n} = un nombre : "{n} elements" ne doit pas avaler
+                        # "Only the selected elements" ("Only the selected éléments")
+                        motif += r"(?P<%s>[-+]?\d+(?:[.,  ]\d+)*)" % nom
                     else:
-                        motif += "(?P<%s>.+?)" % nom
+                        # {nom} = un texte court sans retour a la ligne
+                        motif += r"(?P<%s>[^\n]{1,80}?)" % nom
             try:
                 modeles.append((re.compile("^" + motif + "$", re.S), val))
             except re.error:
@@ -483,15 +491,18 @@ class _Automatique(object):
         self.modifies = set()     # paires a enregistrer
         self.nouveau = False      # des traductions sont arrivees
         self.panne_jusqua = 0.0
+        self.panne_signalee = False
+        self.fournisseur = "mymemory"
         self.echecs_en_panne = False
         self.debut_detection = None
         self.attend_detection = False
         self.fil = None
 
-    def configurer(self, actif, source, cible, port):
+    def configurer(self, actif, source, cible, port, fournisseur="mymemory"):
         self.actif = actif
         self.source = source
         self.cible = cible
+        self.fournisseur = fournisseur or "mymemory"
         if port:
             self.port = port
         if actif and self.fil is None:
@@ -516,8 +527,9 @@ class _Automatique(object):
                 return False
         return True
 
-    def _chemin(self, source, cible):
-        return os.path.join(self.racine, "cache", "%s-%s.json" % (source or "auto", cible))
+    def _chemin(self, fournisseur, source, cible):
+        # un cache par traducteur : changer de traducteur redonne ses propres traductions
+        return os.path.join(self.racine, "cache", fournisseur, "%s-%s.json" % (source or "auto", cible))
 
     def _charger(self, cle):
         if cle in self.memoire:
@@ -541,7 +553,7 @@ class _Automatique(object):
                 return None, True
         if source == self.cible:
             return None, False
-        cle = (source, self.cible)
+        cle = (self.fournisseur, source, self.cible)
         with self.verrou:
             self._charger(cle)
             t = self.memoire[cle].get(texte)
@@ -550,7 +562,7 @@ class _Automatique(object):
             if time.time() < self.panne_jusqua:
                 self.echecs_en_panne = True
                 return None, False
-            demande = (source, self.cible, texte)
+            demande = (self.fournisseur, source, self.cible, texte)
             if demande not in self.demandes:
                 self.demandes.add(demande)
                 self.attente.append(demande)
@@ -590,12 +602,13 @@ class _Automatique(object):
                 if not self.attente:
                     self.evenement.clear()
             groupes = {}
-            for source, cible, texte in lot:
-                groupes.setdefault((source, cible), []).append(texte)
-            for (source, cible), textes in groupes.items():
+            for fournisseur, source, cible, texte in lot:
+                groupes.setdefault((fournisseur, source, cible), []).append(texte)
+            for (fournisseur, source, cible), textes in groupes.items():
+                cle = (fournisseur, source, cible)
                 try:
-                    corps = json.dumps({"source": source, "cible": cible, "textes": textes},
-                                       ensure_ascii=False).encode("utf-8")
+                    corps = json.dumps({"fournisseur": fournisseur, "source": source, "cible": cible,
+                                        "textes": textes}, ensure_ascii=False).encode("utf-8")
                     requete = urllib.request.Request(
                         "http://127.0.0.1:%s/traduire" % self.port, data=corps,
                         headers={"Content-Type": "application/json; charset=utf-8"})
@@ -605,27 +618,44 @@ class _Automatique(object):
                     if not isinstance(trads, list) or len(trads) != len(textes):
                         raise ValueError("reponse incomplete")
                     resultats = [t if isinstance(t, str) and t.strip() else "" for t in trads]
-                except urllib.error.HTTPError as e:
-                    # langue refusee, texte intraduisible : echec memorise, pas de nouvel essai
-                    _journal("moteur : HTTP %s pour %d texte(s) %s -> %s" % (e.code, len(textes), source or "auto", cible))
-                    resultats = [""] * len(textes)
                 except Exception as e:
+                    detail = repr(e)
+                    if isinstance(e, urllib.error.HTTPError):
+                        try:
+                            detail = json.loads(e.read().decode("utf-8")).get("erreur", detail)
+                        except Exception:
+                            pass
+                        if e.code == 400:
+                            # langue refusee, traducteur inconnu : echec memorise, pas de nouvel essai
+                            _journal("traduction refusee (%s) : %s" % (fournisseur, detail))
+                            with self.verrou:
+                                self._charger(cle)
+                                for t in textes:
+                                    self.memoire[cle][t] = ""
+                                    self.demandes.discard((fournisseur, source, cible, t))
+                            continue
+                    # 503 (quota, cle, reseau du service) ou moteur injoignable : texte d'origine
+                    # garde, nouvel essai plus tard ; signale une seule fois tant que ca dure
                     with self.verrou:
                         for t in textes:
-                            self.demandes.discard((source, cible, t))
-                        if time.time() >= self.panne_jusqua:
-                            _journal("moteur injoignable sur le port %s (%r) : nouvel essai dans %d s"
-                                     % (self.port, e, int(self.PAUSE_PANNE)))
+                            self.demandes.discard((fournisseur, source, cible, t))
+                        if not self.panne_signalee:
+                            self.panne_signalee = True
+                            _journal("traduction en ligne indisponible (%s, port %s) : %s ; nouvel essai toutes les %d s"
+                                     % (fournisseur, self.port, detail, int(self.PAUSE_PANNE)))
                         self.panne_jusqua = time.time() + self.PAUSE_PANNE
                         self.echecs_en_panne = True
                     continue
                 with self.verrou:
-                    self._charger((source, cible))
-                    m = self.memoire[(source, cible)]
+                    if self.panne_signalee:
+                        self.panne_signalee = False
+                        _journal("traduction en ligne retablie (%s)" % fournisseur)
+                    self._charger(cle)
+                    m = self.memoire[cle]
                     for t, r in zip(textes, resultats):
                         m[t] = r
-                        self.demandes.discard((source, cible, t))
-                    self.modifies.add((source, cible))
+                        self.demandes.discard((fournisseur, source, cible, t))
+                    self.modifies.add(cle)
                     self.nouveau = True
             self._enregistrer()
 
@@ -635,9 +665,9 @@ class _Automatique(object):
             paires = list(self.modifies)
             self.modifies.clear()
             copies = {p: dict(self.memoire.get(p, {})) for p in paires}
-        for (source, cible), traductions in copies.items():
+        for (fournisseur, source, cible), traductions in copies.items():
             try:
-                chemin = self._chemin(source, cible)
+                chemin = self._chemin(fournisseur, source, cible)
                 os.makedirs(os.path.dirname(chemin), exist_ok=True)
                 # un autre script a pu ecrire le meme cache : on fusionne
                 existant = _Moteur._lire_json(chemin)
@@ -647,7 +677,8 @@ class _Automatique(object):
                     traductions = fusion
                 tmp = chemin + ".%d.tmp" % os.getpid()
                 with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump({"source": source, "cible": cible, "traductions": traductions},
+                    json.dump({"fournisseur": fournisseur, "source": source, "cible": cible,
+                               "traductions": traductions},
                               f, ensure_ascii=False, indent=1, sort_keys=True)
                 os.replace(tmp, chemin)
             except Exception as e:

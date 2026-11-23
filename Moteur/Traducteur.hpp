@@ -46,7 +46,14 @@ public:
 // --essai : rend "[cible] texte" (aucun modele : banc de test de la chaine complete)
 std::unique_ptr<Traducteur> CreerTraducteurEssai ();
 
-// --modele <dossier> : M2M100 418M au format CTranslate2 (TraducteurM2M100.cpp)
+// --modele <dossier> : M2M100 418M au format CTranslate2 (TraducteurM2M100.cpp, option de build
+// TT_MODELE_LOCAL, desactivee par defaut)
 std::unique_ptr<Traducteur> CreerTraducteurM2M100 (const std::string& dossier, std::string& erreur);
+
+// Traducteurs en ligne (TraducteursEnLigne.cpp) : "deepl", "microsoft", "google", "mymemory",
+// "libretranslate". cles = contenu de cles.json.
+namespace Json { struct Valeur; }
+extern const char* const FournisseursEnLigne[5];
+std::unique_ptr<Traducteur> CreerTraducteurEnLigne (const std::string& nom, const Json::Valeur& cles);
 
 #endif

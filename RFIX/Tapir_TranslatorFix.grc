@@ -7,6 +7,7 @@
 //   Menu principal "Tapir Translator" fait de trois menus enregistrés :
 //     32500 sous-menu "Langue d'entrée"   (1 = détection automatique, 2.. = TT::Langues[1..])
 //     32501 sous-menu "Langue de sortie"  (1 = aucune traduction,     2.. = TT::Langues[1..])
+//     32503 sous-menu "Traducteur en ligne" (1..5 = TT::Fournisseurs, 7 = cles)
 //     32502 sous-menu "Options" (commandes)
 //   L'ordre des langues est celui de TT::Langues (Src/TT_Coeur.cpp) : les garder alignés.
 // ****************************************************************************/
@@ -133,7 +134,7 @@
 'STR#' 32502 "Menu : commandes" {
 /* [   ] */		"Tapir Translator"
 /* [   ] */		"Options"
-/* [  1] */			"Traduction automatique hors ligne (textes hors dictionnaire)"
+/* [  1] */			"Traduction en ligne (textes hors dictionnaire)"
 /* [  2] */			"Collecter les textes non traduits"
 /* [  3] */			"-"
 /* [  4] */			"Ouvrir le dossier des dictionnaires"
@@ -143,9 +144,34 @@
 'STR#' 32602 "Aide : commandes" {
 /* [   ] */		""
 /* [   ] */		""
-/* [  1] */		"Les textes absents des dictionnaires sont traduits par le moteur hors ligne (TapirTranslatorMoteur), puis gardés en cache."
+/* [  1] */		"Les textes absents des dictionnaires sont envoyés au traducteur en ligne choisi (menu Traducteur en ligne), puis gardés en cache sur ce poste."
 /* [  2] */		"Note chaque texte sans traduction dans le dossier manquants (un fichier par script), prêt à compléter puis à copier dans dictionnaires."
 /* [  3] */		""
 /* [  4] */		"Ouvre le dossier Tapir Translator de AppData (dictionnaires, textes manquants, journal)."
-/* [  5] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langues, dictionnaires, fin du journal de la couche."
+/* [  5] */		"Écrit dans le Rapport de session : dossiers, PYTHONPATH, langues, dictionnaires, traducteur et clés, fin du journal."
+}
+
+
+'STR#' 32503 "Menu : traducteur en ligne" {
+/* [   ] */		"Tapir Translator"
+/* [   ] */		"Traducteur en ligne"
+/* [  1] */			"DeepL"
+/* [  2] */			"Microsoft Translator"
+/* [  3] */			"Google Cloud Translation"
+/* [  4] */			"MyMemory (sans clé)"
+/* [  5] */			"LibreTranslate"
+/* [  6] */			"-"
+/* [  7] */			"Clés des traducteurs..."
+}
+
+'STR#' 32603 "Aide : traducteur en ligne" {
+/* [   ] */		""
+/* [   ] */		""
+/* [  1] */		"DeepL API Free : environ 500 000 caractères par mois gratuits, clé personnelle à saisir dans Clés des traducteurs."
+/* [  2] */		"Microsoft Translator (Azure, niveau F0) : environ 2 millions de caractères par mois gratuits, clé et région à saisir."
+/* [  3] */		"Google Cloud Translation : clé Google Cloud à saisir."
+/* [  4] */		"MyMemory : sans clé, quota quotidien limité (plus grand avec une adresse e-mail dans Clés des traducteurs)."
+/* [  5] */		"LibreTranslate : adresse d'un serveur LibreTranslate (et sa clé si besoin) à saisir."
+/* [  6] */		""
+/* [  7] */		"Ouvre cles.json dans le Bloc-notes : les clés restent sur ce poste, les scripts ne les voient jamais."
 }

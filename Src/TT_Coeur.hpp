@@ -31,11 +31,26 @@ struct Reglages {
 	std::string entree;		// langue des scripts, code de Langues[], "" = detection automatique
 	std::string langue;		// langue de sortie, code de Langues[], "" = aucune traduction
 	bool collecte = false;	// noter les textes sans traduction
-	bool moteur = false;	// traduction automatique hors ligne des textes hors dictionnaire
+	bool moteur = false;	// traduction en ligne des textes hors dictionnaire
+	std::string fournisseur = "mymemory";	// code de Fournisseurs[]
 };
 
-// Port du moteur de traduction hors ligne (127.0.0.1)
+// Traducteurs en ligne (meme ordre que le sous-menu Options de RFIX/Tapir_TranslatorFix.grc)
+struct Fournisseur {
+	const char* code;
+	const char* nom;
+	const char* besoin;		// ce qu'il faut renseigner dans cles.json
+};
+extern const Fournisseur Fournisseurs[];
+extern const int NombreFournisseurs;
+bool FournisseurConnu (const std::string& code);	// + "essai" (banc) et "local" (option de build)
+
+// Port du moteur de traduction (127.0.0.1)
 constexpr int PortMoteur = 8779;
+
+// cles.json : cles des traducteurs en ligne (cree vide s'il n'existe pas, jamais ecrase)
+std::wstring CheminCles (const std::wstring& racine);
+bool CreerModeleCles (const std::wstring& racine, std::wstring& erreur);
 
 // %APPDATA%\Tapir Translator (vide si APPDATA n'existe pas)
 std::wstring DossierParDefaut ();
@@ -68,6 +83,12 @@ std::wstring LireVariable (const wchar_t* nom);
 
 // Noms des .json d'un dossier (sans chemin)
 std::vector<std::wstring> ListerJson (const std::wstring& dossier);
+
+// Supprime un dossier et son contenu (sans demander)
+void SupprimerDossier (const std::wstring& dossier);
+
+// Sous-dossiers d'un dossier (noms seuls)
+std::vector<std::wstring> ListerDossiers (const std::wstring& dossier);
 
 // Nombre de textes encore vides ("texte": "") d'un fichier de manquants
 int CompterVides (const std::string& json);
