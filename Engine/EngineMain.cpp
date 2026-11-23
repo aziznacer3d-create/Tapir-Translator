@@ -69,7 +69,7 @@
 namespace {
 
 // Engine version, reported by GET /status.
-const char* const kVersion = "0.8.0";
+const char* const kVersion = "0.8.1";
 // Path of the log file (--log); empty = no logging.
 std::string g_log;
 

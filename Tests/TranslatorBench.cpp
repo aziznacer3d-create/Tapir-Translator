@@ -846,6 +846,7 @@ int main ()
 		Write (TT::Join (old, L"cles.json"), "{\"_explication\": \"x\", \"deepl\": {\"_ou\": \"y\", \"cle\": \"secret:fx\"}}");
 		Write (TT::Join (old, L"corrections.json"), "{\"fr\": [{\"source\": \"story\", \"mauvais\": \"histoire\", \"correct\": \"étage\"}]}");
 		Write (TT::Join (TT::Join (old, L"dictionnaires"), L"_perso.json"), "{\"format\": 2, \"langues\": [\"fr\"], \"termes\": []}");
+		Write (TT::Join (TT::Join (old, L"dictionnaires"), L"_commun.json"), "{\"format\": 2, \"termes\": []}");
 		Write (TT::Join (TT::Join (old, L"dictionnaires"), L"outil.json"), "{\"langue_source\": \"fr\", \"traductions\": {\"en\": {\"Fermer\": \"Close\"}}}");
 		Write (TT::Join (TT::Join (old, L"manquants"), L"outil.json"), "{\"langue_source\": \"en\", \"traductions\": {\"fr\": {\"Close\": \"\"}}}");
 		Write (TT::Join (TT::Join (TT::Join (old, L"cache"), L"mymemory"), L"en-fr.json"),
@@ -877,6 +878,7 @@ int main ()
 			   c.find ("\"Close\": \"Fermer\"") != std::string::npos, c);
 		Check ("journal.txt -> log.txt", TT::ReadWholeFile (TT::Join (old, L"log.txt"), c) && c == "old log line\n");
 		Check ("old layer folder deleted", !TT::FolderExists (TT::Join (old, L"couche")));
+		Check ("old _commun.json deleted", !TT::FileExists (TT::Join (TT::Join (old, L"dictionaries"), L"_commun.json")));
 		// Step 3: a second pass must find nothing left to convert.
 		std::vector<std::wstring> again;
 		TT::MigrateOldData (old, again);

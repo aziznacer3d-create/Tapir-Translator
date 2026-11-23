@@ -21,7 +21,7 @@
 
 namespace TT {
 
-const char* const AddOnVersion = "0.8.0";
+const char* const AddOnVersion = "0.8.1";
 
 // Same order as the items of the input / output language menus (MenuBase + 0 / + 1, generated
 // into RFIX/Tapir_TranslatorMenus.grc) and as the columns of dictionaries/_common.json.
@@ -793,6 +793,10 @@ void MigrateOldData (const std::wstring& root, std::vector<std::wstring>& journa
 	MigrateName (Join (root, L"dictionnaires"), Join (root, L"dictionaries"), journal);
 	MigrateName (Join (Join (root, L"dictionaries"), L"_perso.json"), Join (Join (root, L"dictionaries"), L"_user.json"), journal);
 	MigrateName (Join (root, L"manquants"), Join (root, L"missing"), journal);
+	// The old common dictionary belongs to the add-on (rewritten as _common.json at every start).
+	const std::wstring oldCommon = Join (Join (root, L"dictionaries"), L"_commun.json");
+	if (FileExists (oldCommon) && DeleteFileW (oldCommon.c_str ()) != 0)
+		journal.push_back (L"old common dictionary deleted: " + oldCommon);
 	if (FolderExists (Join (root, L"couche"))) {
 		DeleteFolder (Join (root, L"couche"));	// the layer is rewritten in layer\ at every start
 		journal.push_back (L"old layer folder deleted: " + Join (root, L"couche"));
