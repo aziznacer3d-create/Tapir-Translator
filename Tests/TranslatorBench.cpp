@@ -50,6 +50,7 @@
 #include "TT_Payload.hpp"
 #include "TT_Core.hpp"
 #include "TT_Texts.hpp"
+#include "Corrections.hpp"
 
 #if !defined (WIN32_LEAN_AND_MEAN)
 	#define WIN32_LEAN_AND_MEAN
@@ -1592,6 +1593,102 @@ int main ()
 			FreeLibrary (module);
 		Check ("Tapir_Translator.apx contains the 200 menu and help resources", resourcesInside);
 		Check ("generated menus: Japanese present", grc.find (TT::Txt (TT::M_TRANSLATOR, TT::InterfaceIndex ("ja"))) != std::string::npos);
+	}
+
+	// --- [7] term corrections window: model (Engine/Corrections.cpp) and window ------------------
+	//   1. the pre-filled corrections.json reads, writes back and reads again identically;
+	//   2. the rules are applied exactly like the layer (scenario [3f] tests the layer itself):
+	//      whole words, case style, automatic -s plural (wrong/correct form only), "source"
+	//      condition, longest expressions first;
+	//   3. the cache of every translator (and the oldest layout) is read for one language;
+	//   4. the real window opens from the engine (--corrections) and closes by itself without
+	//      touching the file.
+	std::printf ("\n[7] Term corrections window\n");
+	{
+		const std::wstring folder = TT::Join (temp, L"TapirTranslatorCorrections_" + std::to_wstring (GetCurrentProcessId ()));
+		DeleteTree (folder);
+		TT::CreateFolder (folder);
+		// Step 1: template -> model -> file -> model: same JSON text.
+		std::wstring werror;
+		TT::CreateCorrectionsTemplate (folder, werror);
+		const std::wstring path = TT::CorrectionsPath (folder);
+		Corrections::File file;
+		std::string error;
+		Check ("pre-filled corrections.json read by the window's model",
+			   Corrections::Load (path, file, error) && file.languages["fr"].size () >= 10 && !file.explanation.empty (), error);
+		const std::string first = Corrections::Serialize (file);
+		Corrections::File again;
+		Check ("written back and read again: identical", Corrections::Save (path, file, error) && Corrections::Load (path, again, error) &&
+			   Corrections::Serialize (again) == first, error);
+		{
+			Json::Value v;
+			std::string written;
+			TT::ReadWholeFile (path, written);
+			Check ("written file is valid JSON", Json::Reader (written).Read (v) && v.Field ("fr") != nullptr);
+		}
+		// Step 2: same results as the layer.
+		const auto& fr = file.languages["fr"];
+		Check ("\"All stories\": \"Toutes les histoires\" -> \"Tous les étages\"",
+			   Corrections::Apply (fr, "fr", "All stories", "Toutes les histoires") == "Tous les étages",
+			   Corrections::Apply (fr, "fr", "All stories", "Toutes les histoires"));
+		std::vector<Corrections::Rule> rules (1);
+		rules[0].sources = { "layer", "layers" };
+		rules[0].pairs = { { "couche", "calque" } };
+		Check ("automatic -s plural (fr), whole word", Corrections::Apply (rules, "fr", "Hide layers", "Masquer les couches") == "Masquer les calques");
+		Check ("initial capital kept", Corrections::Apply (rules, "fr", "Layer", "Couche") == "Calque");
+		Check ("ALL CAPS kept", Corrections::Apply (rules, "fr", "LAYER", "COUCHE") == "CALQUE");
+		Check ("source condition: no \"layer\" in the original -> unchanged",
+			   Corrections::Apply (rules, "fr", "Hide walls", "Masquer la couche") == "Masquer la couche");
+		Check ("part of a word never replaced", Corrections::Apply (rules, "fr", "layer", "couchette") == "couchette");
+		Check ("no automatic plural in de", Corrections::Apply (rules, "de", "layers", "couches") == "couches");
+		rules[0].replaceForm = true;
+		Check ("\"replace\" form: no automatic plural", Corrections::Apply (rules, "fr", "layers", "couches") == "couches");
+		Check ("sources typed with spaces and empty parts", Corrections::SplitSources (" story , stories ,, ").size () == 2 &&
+			   Corrections::JoinSources (Corrections::SplitSources (" story , stories ,, ")) == "story, stories");
+		// Step 3: cache of two translators plus the oldest layout (old "traductions" key).
+		TT::CreateFolder (TT::Join (TT::Join (folder, L"cache"), L"mymemory"));
+		TT::CreateFolder (TT::Join (TT::Join (folder, L"cache"), L"deepl"));
+		Write (TT::Join (TT::Join (TT::Join (folder, L"cache"), L"mymemory"), L"en-fr.json"),
+			   "{\"target\": \"fr\", \"translations\": {\"Hide layers\": \"Masquer les couches\", \"All stories\": \"Toutes les histoires\"}}");
+		Write (TT::Join (TT::Join (TT::Join (folder, L"cache"), L"deepl"), L"auto-fr.json"), "{\"translations\": {\"Close\": \"Fermer\"}}");
+		Write (TT::Join (TT::Join (folder, L"cache"), L"en-fr.json"), "{\"traductions\": {\"Walls\": \"Murs\"}}");
+		Write (TT::Join (TT::Join (TT::Join (folder, L"cache"), L"mymemory"), L"en-de.json"), "{\"translations\": {\"Walls\": \"Wände\"}}");
+		const auto cache = Corrections::ReadCache (folder, "fr");
+		std::string list;
+		for (const auto& c : cache)
+			list += c.original + "|";
+		Check ("cache read for fr: every translator, oldest layout, sorted, other languages left out",
+			   list == "All stories|Close|Hide layers|Walls|", list);
+		// Step 4: the real window, from the engine, closing by itself after 1.5 s.
+		{
+			wchar_t exe[MAX_PATH] = {};
+			GetModuleFileNameW (nullptr, exe, MAX_PATH);
+			std::wstring engine = exe;
+			engine = engine.substr (0, engine.find_last_of (L'\\') + 1) + L"TapirTranslatorEngine.exe";
+			std::wstring line = L"\"" + engine + L"\" --interface ja --output fr --corrections \"" + path + L"\" --corrections-test 1500";
+			std::vector<wchar_t> buffer (line.begin (), line.end ());
+			buffer.push_back (L'\0');
+			STARTUPINFOW si = {};
+			si.cb = sizeof (si);
+			PROCESS_INFORMATION pi = {};
+			std::string before;
+			TT::ReadWholeFile (path, before);
+			const ULONGLONG t0 = GetTickCount64 ();
+			DWORD code = 99;
+			if (CreateProcessW (nullptr, buffer.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+				WaitForSingleObject (pi.hProcess, 15000);
+				GetExitCodeProcess (pi.hProcess, &code);
+				CloseHandle (pi.hThread);
+				CloseHandle (pi.hProcess);
+			}
+			const ULONGLONG elapsed = GetTickCount64 () - t0;
+			std::string after;
+			TT::ReadWholeFile (path, after);
+			Check ("window opened (Japanese UI) and closed by itself, exit code 0", code == 0 && elapsed >= 1200,
+				   "code " + std::to_string (code) + ", " + std::to_string (elapsed) + " ms");
+			Check ("window closed without saving: file unchanged", after == before);
+		}
+		DeleteTree (folder);
 	}
 
 	// Summary; the temporary folder is kept when something failed, for examination.

@@ -52,8 +52,22 @@ cache are kept.
 ## Term corrections
 
 Online translators know the Archicad vocabulary poorly ("story" becomes "histoire" instead of "étage" in
-French). `%APPDATA%\Tapir Translator\corrections.json` (menu **Online translator > Term corrections...**)
-corrects the online translations, output language by output language:
+French). `%APPDATA%\Tapir Translator\corrections.json` corrects the online translations, output language
+by output language.
+
+The menu **Online translator > Term corrections...** opens the **term corrections window** (in the
+tool's language, in its own process: ArchiCAD stays usable):
+
+- **Output language** list and a **search** box that filters everything.
+- **Rules**: one row per replacement ("If the original contains", "Wrong", "Correct") with the number of
+  online translations already received that it changes; Add / Duplicate / Delete and an editor below.
+- **Online translations already received** (the cache of every translator) with their text after
+  corrections: select one, highlight the wrongly translated word and click **Correct this word** to
+  create the rule; **Before / After** preview of the selected rule.
+- **Save** rewrites `corrections.json`; open windows and the cache follow at once. **Cancel** asks
+  before losing changes.
+
+The file keeps its format and can still be edited by hand:
 
 ```json
 {
@@ -218,7 +232,7 @@ The menus exist in the 20 languages (see "Tool language"); their English names:
 | Output language > No translation / 20 languages | displayed language, live (open windows included) |
 | Online translator > DeepL / Microsoft Translator / Google Cloud Translation / MyMemory / LibreTranslate | translator of the sentences missing from the dictionaries |
 | Online translator > Translator keys... | opens `keys.json` in Notepad |
-| Online translator > Term corrections... | opens `corrections.json` in Notepad |
+| Online translator > Term corrections... | opens the term corrections window (Notepad if the engine is missing) |
 | Options > Online translation | starts / stops the engine (sentences missing from the dictionaries) |
 | Options > Collect untranslated texts | checked = recorded in `missing\` |
 | Options > Open the dictionaries folder | opens `%APPDATA%\Tapir Translator` |
@@ -294,6 +308,7 @@ the conversion of old data. `uv` must be in the `PATH`.
 - v0.7.1 – v0.7.5: menu fixes (resource IDs below 32767, menu resources linked into the `.apx`, add-on
   kept loaded after a menu command, menus renamed at once when the tool language changes); Session
   Report lines copied to the log.
+- v0.9.0: term corrections window (rules editor, suggestions from the cache, preview) instead of Notepad.
 - v0.8.0: the whole code base in English (identifiers, files, folders, messages, data names), with an
   automatic conversion of the data of older versions.
 - Not translated yet: HTML interfaces served by a script (local server), message-box buttons (Windows
@@ -306,7 +321,8 @@ the conversion of old data. `uv` must be in the `PATH`.
   dependency, shared with the bench).
 - `Src/TT_Texts.*`: texts of the tool in the 20 languages.
 - `Src/TT_Payload.*`, `Tools/Packer.cpp`: payload appended to the end of the `.apx`.
-- `Engine/`: local translation server, online translators, MyMemory quota window, M2M100 and test
+- `Engine/`: local translation server, online translators, MyMemory quota window, term corrections
+  window and model (`CorrectionsWindow.*`, `Corrections.*`), M2M100 and test
   translators.
 - `layer/sitecustomize.py`: the translation layer (Python: it runs in the script's interpreter).
 - `dictionaries/_common.json`: the embedded common dictionary.

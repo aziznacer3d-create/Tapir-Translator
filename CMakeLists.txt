@@ -321,6 +321,8 @@ endif()
 if (WIN32)
 	add_executable (TranslatorBench
 		Tests/TranslatorBench.cpp
+		Engine/Corrections.cpp
+		Engine/Corrections.hpp
 		Src/TT_Core.cpp
 		Src/TT_Core.hpp
 		"${EmbeddedCpp}"
@@ -341,6 +343,10 @@ if (WIN32)
 		Engine/TestTranslator.cpp
 		Engine/OnlineTranslators.cpp
 		Engine/Dialogue.cpp
+		Engine/Corrections.cpp
+		Engine/Corrections.hpp
+		Engine/CorrectionsWindow.cpp
+		Engine/CorrectionsWindow.hpp
 		Engine/Dialogue.hpp
 		Src/TT_Texts.cpp
 		Engine/Http.cpp

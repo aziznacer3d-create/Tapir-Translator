@@ -40,6 +40,9 @@
 //   --log <file>       append log lines to this file (log.txt)
 //   --show-quota 0|1    development: only show the quota window and exit
 //   --save-email <keys.json> <email>   test bench: write the e-mail and exit
+//   --corrections <file>   only show the term corrections window (CorrectionsWindow.hpp)
+//   --output <code>        first output language of that window
+//   --corrections-test <ms>  test bench: the window closes by itself after <ms>
 //
 //   On success the engine prints "READY <port>" on stdout once it listens.
 // *****************************************************************************
@@ -50,10 +53,12 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <shellapi.h>
 
 #include "Json.hpp"
 #include "Translator.hpp"
 #include "Dialogue.hpp"
+#include "CorrectionsWindow.hpp"
 #include "TT_Texts.hpp"
 
 #include <atomic>
@@ -65,11 +70,12 @@
 #include <vector>
 
 #pragma comment (lib, "Ws2_32.lib")
+#pragma comment (lib, "shell32.lib")	// CommandLineToArgvW
 
 namespace {
 
 // Engine version, reported by GET /status.
-const char* const kVersion = "0.8.2";
+const char* const kVersion = "0.9.0";
 // Path of the log file (--log); empty = no logging.
 std::string g_log;
 
@@ -440,6 +446,9 @@ int main (int argc, char** argv)
 	Context context;
 	std::string model;
 	DWORD parent = 0;
+	std::string output;			// --output: first output language of the corrections window
+	int correctionsIndex = 0;		// --corrections <file>: index of <file> in the command line
+	int correctionsTestMs = 0;		// --corrections-test <ms>: the window closes by itself (bench)
 	for (int i = 1; i < argc; ++i) {
 		const std::string a = argv[i];
 		if (a == "--port" && i + 1 < argc)
@@ -466,10 +475,27 @@ int main (int argc, char** argv)
 			const std::string path = argv[i + 1];
 			return SaveEmail (path, argv[i + 2]) ? 0 : 1;
 		}
+		else if (a == "--output" && i + 1 < argc)
+			output = argv[++i];
+		else if (a == "--corrections" && i + 1 < argc)
+			correctionsIndex = ++i;
+		else if (a == "--corrections-test" && i + 1 < argc)
+			correctionsTestMs = std::atoi (argv[++i]);
 		else if (a == "--parent" && i + 1 < argc)
 			parent = static_cast<DWORD> (std::strtoul (argv[++i], nullptr, 10));
 		else if (a == "--log" && i + 1 < argc)
 			g_log = argv[++i];
+	}
+	// Step 1b: --corrections <file>: this process only shows the term corrections window (no
+	// server). The path is taken from the UTF-16 command line: argv is in the ANSI code page and
+	// would lose the characters of a user folder outside it.
+	if (correctionsIndex > 0) {
+		int count = 0;
+		LPWSTR* wide = CommandLineToArgvW (GetCommandLineW (), &count);
+		const std::wstring path = wide != nullptr && correctionsIndex < count ? wide[correctionsIndex] : std::wstring ();
+		if (wide != nullptr)
+			LocalFree (wide);
+		return path.empty () ? 1 : ShowCorrectionsWindow (path, output, context.interfaceLanguage, correctionsTestMs);
 	}
 	// Step 2: offline model (only if --model was given; a failure is logged
 	// and the engine keeps running with the other translators)

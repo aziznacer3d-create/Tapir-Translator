@@ -590,9 +590,12 @@ void StartEngine ()
 							  { "e", KeyStatus (g_settings.provider).ToCStr (0, MaxUSize, CC_UTF8).Get () } })));
 }
 
-// Menu "Online translator > Term corrections...": opens corrections.json in Notepad, creating
-// the pre-filled template first if the file does not exist (an existing file is never
-// overwritten). ShellExecuteW returns a value <= 32 on failure.
+// Menu "Online translator > Term corrections...": opens the term corrections window, creating
+// the pre-filled corrections.json first if the file does not exist (an existing file is never
+// overwritten). The window belongs to the engine executable (Engine/CorrectionsWindow.cpp),
+// started with --corrections in its own process: ArchiCAD stays usable while it is open, and a
+// second click only brings the open window to the front. Without the engine executable the
+// file is opened in Notepad, as before. ShellExecuteW returns a value <= 32 on failure.
 void OpenCorrections ()
 {
 	std::wstring error;
@@ -600,6 +603,35 @@ void OpenCorrections ()
 		Report (GS::UniString ("ERROR creating corrections.json: ") + Uni (error));
 		return;
 	}
+	// Step 1: the engine executable (extracted from the .apx if needed).
+	ExtractEngine ();
+	std::wstring exe;
+	for (const std::wstring& e : EngineLocations ()) {
+		if (TT::FileExists (e)) {
+			exe = e;
+			break;
+		}
+	}
+	// Step 2: start the window in the tool's language, on the current output language.
+	if (!exe.empty ()) {
+		std::wstring line = L"\"" + exe + L"\" --interface " + TT::FromUtf8 (TT::InterfaceCode (g_messageLanguage)) + L" --output " +
+							TT::FromUtf8 (g_settings.language.empty () ? std::string ("fr") : g_settings.language) +
+							L" --corrections \"" + TT::CorrectionsPath (g_root) + L"\"";
+		std::vector<wchar_t> buffer (line.begin (), line.end ());
+		buffer.push_back (L'\0');
+		const std::wstring folder = exe.substr (0, exe.find_last_of (L"\\/"));
+		STARTUPINFOW si = {};
+		si.cb = sizeof (si);
+		PROCESS_INFORMATION pi = {};
+		if (CreateProcessW (nullptr, buffer.data (), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, folder.c_str (), &si, &pi)) {
+			AllowSetForegroundWindow (pi.dwProcessId);	// the window may come to the front
+			CloseHandle (pi.hThread);
+			CloseHandle (pi.hProcess);
+			return;
+		}
+		Log ("corrections window could not be started (Windows error " + std::to_string (GetLastError ()) + "): Notepad instead");
+	}
+	// Step 3 (fallback): corrections.json in Notepad.
 	const std::wstring parameters = L"\"" + TT::CorrectionsPath (g_root) + L"\"";
 	const HINSTANCE r = ShellExecuteW (nullptr, L"open", L"notepad.exe", parameters.c_str (), nullptr, SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR> (r) <= 32)
