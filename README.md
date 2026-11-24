@@ -124,14 +124,52 @@ Every **displayed** text is translated:
 - `Listbox` items and `ttk.Combobox` lists (`values`);
 - `Canvas` texts;
 - variables (`StringVar`) displayed by a Label or a Button;
-- titles and messages of `messagebox` and of the file dialogs.
+- titles and messages of `messagebox` and of the file dialogs;
+- `Text` widgets the script fills and then makes read-only (`state="disabled"`: result panels, help,
+  logs), line by line with their tags; `get` gives back the originals;
+- texts drawn into images with Pillow (buttons drawn by the script): the drawing of each image is
+  recorded and replayed in place when the language changes or an online translation arrives (a
+  centred text stays centred);
+- long and multi-line texts go online line by line, then sentence by sentence (600 characters at most
+  per request);
+- **Script UI pages** (HTML palettes shown with Tapir's `ShowScriptUI`, since 0.11.0,
+  not yet tested inside ArchiCAD): see below.
 
 The script always reads its texts back in their original language (`cget`, `StringVar.get`,
 `entrycget`, `title()`, `tab`, `heading`, `itemcget`, `Treeview.item` / `set`, `Listbox.get`,
 `Combobox.get` and its variable). A comparison such as `if button.cget("text") == "Close"` or
 `if combo.get() == "All types"` therefore still works once the interface is translated.
 
-Never translated: what the user types (Entry, Text, free text of a Combobox). Never sent to the
+### Script UI pages (HTML)
+
+The script writes its page and sends it to ArchiCAD in an HTTP request (`API.ExecuteAddOnCommand`,
+`ShowScriptUI`, `htmlContent`). That request leaves from the script's own process, so the layer
+patches `http.client` (urllib, the archicad package) and `urllib3` (requests) and rewrites it:
+
+- the texts of the page are looked up first: HTML texts and attributes (`title`, `placeholder`, `alt`,
+  `aria-label`, value of input buttons), with an online request when needed, and the strings of its
+  JavaScript (dictionaries and cache only: they may be identifiers or CSS classes, never sent online);
+- a script is put at the head of the page. In the palette it translates every displayed text, also the
+  texts the page's JavaScript writes later, and gives the originals back to the page's code
+  (`textContent`, `innerText`, `innerHTML`, `getAttribute`, `title`, `value`, `select.value`,
+  `document.title`): comparisons and results submitted with `ACAPI.SubmitResult` stay in the original
+  language;
+- a small HTTP server of the script's process (127.0.0.1, random port and key) answers the page for the
+  texts it did not know in advance and for the changes of language, dictionaries and online
+  translations: the open palette follows the menu like the tkinter windows. If the script has ended,
+  the page keeps the translations it already has;
+- the palette title (`title` parameter) is translated too. An element (or the whole page) with
+  `translate="no"` or the `notranslate` class is left alone.
+
+Not checked yet inside ArchiCAD: that its palette browser lets the page reach `127.0.0.1` (without
+that, the page only gets the translations known when it is shown).
+
+Never translated: the **names of the ArchiCAD project** (views, folders, layouts, stories...). The
+layer reads the answers of ArchiCAD's JSON API in the script's process and keeps their text values
+(never the error messages): a text equal to one of them is displayed as it is, and in a sentence only
+the pieces around such a name are translated; those names are never sent online.
+
+Never translated: what the user types (Entry, editable Text, free text of a Combobox). Never sent to the
 engine: paths, file names, identifiers and codes (`WALL-01`), numbers, texts that are already valid in
 the output language. A "/" between words ("Check / Element ID") is not taken for a path.
 
@@ -293,7 +331,17 @@ the packing of the `.apx` (engine and menu resources inside), the dictionaries, 
 online translators against a fake server speaking the formats of the 5 services, the corrections and
 the conversion of old data. `uv` must be in the `PATH`.
 
-## Status (23/11/2026)
+Script UI pages: `python Tests/bench_scriptui.py` plays ArchiCAD + Tapir and the engine, runs the fake
+script `Tests/bench_scriptui_tool.py` (urllib, then requests if installed) and checks the rewritten
+request. With `--serve` it then keeps the page open at the printed `PAGE` address; `runChecks()` in
+that page checks what is displayed, what the page's code reads back, the submitted result and the live
+language changes.
+
+tkinter extras: `python Tests/bench_tk_extras.py` runs `Tests/bench_tk_extras_tool.py` with a fake
+engine and a fake ArchiCAD (needs Pillow): read-only Text panel, button drawn with Pillow (compared
+pixel by pixel), long and multi-line texts, project names, live language change.
+
+## Status (24/11/2026)
 
 - v0.1.0: tkinter layer, menu, collection.
 - v0.2.0: input language + output language, multilingual common dictionary.
@@ -310,13 +358,18 @@ the conversion of old data. `uv` must be in the `PATH`.
 - v0.7.1 – v0.7.5: menu fixes (resource IDs below 32767, menu resources linked into the `.apx`, add-on
   kept loaded after a menu command, menus renamed at once when the tool language changes); Session
   Report lines copied to the log.
+- v0.11.0: v0.10.1 merged with the `script-ui-html` branch: Script UI pages of Tapir (HTML palettes)
+  translated; read-only Text panels, Pillow-drawn texts and long texts translated; project names never
+  translated; queued texts of a previous output language dropped; MyMemory asked 6 texts at a time.
+  Benches outside ArchiCAD OK; not yet tested inside ArchiCAD (nor the Script UI pages).
+  Ready-to-install build for ArchiCAD 29: `bin/Tapir_Translator_AC29.apx`.
 - v0.10.1: leading symbols ("✔  ") kept apart from the translated words; texts with numbers derived from a cached example ("16 found" from "24 found"); Treeview detail rows sent online after the main texts.
 - v0.10.0: Treeview rows, Listbox items and Combobox lists translated too; "/" between words no longer taken for a path.
 - v0.9.0: term corrections window (rules editor, suggestions from the cache, preview) instead of Notepad.
 - v0.8.0: the whole code base in English (identifiers, files, folders, messages, data names), with an
   automatic conversion of the data of older versions.
-- Not translated yet: HTML interfaces served by a script (local server), message-box buttons (Windows
-  displays them in its own language) and the "Script UI" windows of Tapir.
+- Not translated yet: HTML pages served by a script's own local server in a web browser, message-box
+  buttons (Windows displays them in its own language).
 
 ## Files
 
@@ -331,4 +384,5 @@ the conversion of old data. `uv` must be in the `PATH`.
 - `layer/sitecustomize.py`: the translation layer (Python: it runs in the script's interpreter).
 - `dictionaries/_common.json`: the embedded common dictionary.
 - `licenses/`: license texts of the third-party components (embedded in the `.apx`).
-- `Tests/`: the C++ bench, the fake script and its dictionary.
+- `Tests/`: the C++ bench, the fake script and its dictionary; `bench_scriptui.py` and
+  `bench_scriptui_tool.py` for the Script UI pages.

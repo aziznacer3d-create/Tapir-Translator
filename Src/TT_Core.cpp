@@ -24,7 +24,7 @@
 
 namespace TT {
 
-const char* const AddOnVersion = "0.10.1";
+const char* const AddOnVersion = "0.11.0";
 
 // Same order as the items of the input / output language menus (MenuBase + 0 / + 1, generated
 // into RFIX/Tapir_TranslatorMenus.grc) and as the columns of dictionaries/_common.json.
